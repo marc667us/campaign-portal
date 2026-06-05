@@ -1617,7 +1617,7 @@ function renderTable() {
         <td><textarea class="note" data-i="${masterIdx}">${e.notes}</textarea></td>
         <td class="actions">
           ${e.phones && e.phones[0] ? `<a href="tel:${e.phones[0].replace(/\s/g,'')}">Call</a>` : ''}
-          ${e.email ? `<a href="mailto:${e.email}?subject=SolarPro%20Global%20%E2%80%94%20Ghana%20beta%20invitation&body=${encodeURIComponent(litEmailBody(e))}">Email</a>` : ''}
+          ${e.email ? `<a href="mailto:${e.email}?subject=SolarPro%20Global%20%E2%80%94%20Ghana%20beta%20welcome%20pack&body=${encodeURIComponent(litEmailBody(e))}" title="Open email with the post-cold-call welcome pack pre-filled (landing URL + video + 3 PDF links)">Send pack</a>` : ''}
           <button data-i="${masterIdx}" class="btn-lit" title="Log that literature was sent">Lit</button>
           <a href="${SOLARPRO_URL}/register" target="_blank" class="go-paid" title="Open SolarPro registration in a new tab">Sign up</a>
         </td>
@@ -1662,19 +1662,37 @@ function renderTable() {
   }));
 }
 
-/* Body of an outbound invitation email — pre-fills the mailto: link */
+/* Post-cold-call "welcome pack" — sent to the entity after the rep's first call.
+   - Landing page link (SolarPro live URL)
+   - Video tutorial URL (placeholder — fill in once you've recorded a Loom)
+   - Three written guides referenced (download links served from this portal's docs/)
+   Edit VIDEO_TUTORIAL_URL once the recording exists; the email body picks it up.
+*/
+const VIDEO_TUTORIAL_URL = localStorage.getItem('sp-tutorial-video-url')
+                        || 'https://www.loom.com/share/PASTE_YOUR_LOOM_ID_HERE';
+const PORTAL_DOCS_BASE   = location.origin === 'null' ? 'https://marc667us.github.io/campaign-portal' : location.origin;
+
 function litEmailBody(e) {
+  const docsBase = PORTAL_DOCS_BASE;
   return `Hello ${e.name},\n\n`
-    + `Thanks for your interest in SolarPro Global. We're inviting 15 Ghana solar `
-    + `companies into a private beta and would like to include ${e.name}.\n\n`
-    + `Attached / linked are three short documents:\n`
-    + `  1. Sales overview — what the platform does\n`
-    + `  2. User guide — workflow walk-through\n`
-    + `  3. Technical guide — engineering basis (BS 7671 / IEC 62548)\n\n`
-    + `When you have 5 minutes, please sign up free at: ${SOLARPRO_URL}/register\n\n`
-    + `Beta closes 2026-07-15 and includes a 50% lifetime discount.\n\n`
+    + `Thanks for the chat earlier. As promised, here is the welcome pack for SolarPro Global — `
+    + `the AI solar design platform built for Ghana.\n\n`
+    + `1) Try the platform free (no credit card):\n`
+    + `   ${SOLARPRO_URL}/register\n\n`
+    + `2) Watch the 5-minute walkthrough:\n`
+    + `   ${VIDEO_TUTORIAL_URL}\n\n`
+    + `3) Read the guides at your own pace:\n`
+    + `   * Sales overview: ${docsBase}/docs/SolarPro_Sales_Pitch.pdf\n`
+    + `   * User guide: ${docsBase}/docs/SolarPro_User_Guide.pdf\n`
+    + `   * Technical guide (BS 7671 / IEC 62548): ${docsBase}/docs/SolarPro_Technical_Guide.pdf\n\n`
+    + `Beta closes 2026-07-15 and the first 15 Ghana companies get a 50% lifetime discount.\n\n`
+    + `Any questions, my line is open.\n\n`
     + `— SolarPro Global, Ghana team`;
 }
+
+/* Helper available from the DevTools console:
+   setTutorialVideo('https://www.loom.com/share/xxxx') — persists across reloads */
+window.setTutorialVideo = (url) => { localStorage.setItem('sp-tutorial-video-url', url); location.reload(); };
 
 /* ===============================================================
    Toolbar wiring
