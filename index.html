@@ -687,7 +687,10 @@ window.GHANA_ENTITIES.map(e => e.phones[0]).filter(Boolean);</pre>
      real secret — replace by setting CAMPAIGN_API_KEY on Railway).
    - Every fetch carries X-Campaign-Rep so the backend can audit who changed what.
    =============================================================== */
-const API_BASE = 'https://web-production-744af.up.railway.app/api/campaign';
+// Sales/campaign API runs on Render now (Railway's deploy pipeline was stuck).
+// Allow override via localStorage if we ever need to point at staging.
+const API_BASE = localStorage.getItem('sp-campaign-api') ||
+                 'https://solarpro-global.onrender.com/api/campaign';
 const API_KEY  = 'campaign-ghana-2026-beta';   // legacy soft-auth (still required for some writes)
 
 // Session state — set on login, read on every API call. Persisted to localStorage
