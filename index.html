@@ -149,11 +149,13 @@
 </head>
 <body>
 
-<!-- ============================ LOGIN OVERLAY ============================ -->
+<!-- ============================ LOGIN OVERLAY (three steps) ============================ -->
 <div id="login">
-  <div class="login-card">
+
+  <!-- STEP 1a: sign-in (existing users) -->
+  <div class="login-card" id="step-signin">
     <div class="logo">aiapp<span class="accent">invent</span> — Sales Campaign Portal</div>
-    <div class="sub">Pick the product you're selling. Each rep is assigned to one product at a time.</div>
+    <div class="sub">Sign in with your work email and password.</div>
 
     <label>Email</label>
     <input type="email" id="rep-email" placeholder="you@aiappinvent.com" autofocus autocomplete="username">
@@ -161,17 +163,54 @@
     <label>Password</label>
     <input type="password" id="rep-password" placeholder="" autocomplete="current-password">
 
+    <button class="connect-btn" id="signin-btn" disabled>Sign in</button>
+    <div class="progress" id="auth-progress"></div>
+    <div class="hint" style="margin-top:12px">
+      No account yet? <a href="#" id="go-signup" style="color:#ce1126;font-weight:700">Create one</a>
+    </div>
+  </div>
+
+  <!-- STEP 1b: sign-up (new users) -->
+  <div class="login-card" id="step-signup" style="display:none">
+    <div class="logo">Create your account</div>
+    <div class="sub">Sign up to access the sales portal. New accounts start with the sales role; an admin can promote you later.</div>
+
+    <label>Full name</label>
+    <input type="text" id="su-name" placeholder="e.g. Akua Mensah" autocomplete="name">
+
+    <label>Email</label>
+    <input type="email" id="su-email" placeholder="you@aiappinvent.com" autocomplete="username">
+
+    <label>Password (min 6 characters)</label>
+    <input type="password" id="su-password" placeholder="" autocomplete="new-password">
+
+    <label>Confirm password</label>
+    <input type="password" id="su-password2" placeholder="" autocomplete="new-password">
+
+    <button class="connect-btn" id="signup-btn" disabled>Create account &amp; sign in</button>
+    <div class="progress" id="signup-progress"></div>
+    <div class="hint" style="margin-top:12px">
+      Already have an account? <a href="#" id="go-signin" style="color:#ce1126;font-weight:700">Sign in</a>
+    </div>
+  </div>
+
+  <!-- STEP 2: product picker (shown after successful sign-in) -->
+  <div class="login-card" id="step-product" style="display:none">
+    <div class="logo">Welcome, <span class="accent" id="welcome-name">—</span></div>
+    <div class="sub">Choose the product you're selling today. You can switch any time from the topbar.</div>
+
     <label>Product</label>
     <div class="product-list" id="product-list"></div>
 
     <div class="checkrow">
       <input type="checkbox" id="dl-data" checked>
-      <label for="dl-data" style="text-transform:none;letter-spacing:0;font-weight:500;margin:0">Download all linked data (entity list, sales pitch, guides) to this browser</label>
+      <label for="dl-data" style="text-transform:none;letter-spacing:0;font-weight:500;margin:0">Cache linked data (entity list, sales pitch, guides) for offline use</label>
     </div>
 
     <button class="connect-btn" id="connect-btn" disabled>Connect to app</button>
     <div class="progress" id="login-progress"></div>
   </div>
+
 </div>
 
 <!-- ============================ TOP BAR ============================ -->
@@ -812,45 +851,121 @@ function renderProductCards() {
   }));
 }
 
-function refreshConnectBtn() {
+const SIGNIN_BTN = document.getElementById('signin-btn');
+const SIGNUP_BTN = document.getElementById('signup-btn');
+const AUTH_PROGRESS = document.getElementById('auth-progress');
+const SIGNUP_PROGRESS = document.getElementById('signup-progress');
+
+/* STEP 1a — sign in */
+function refreshSigninBtn() {
   const emailOk = /@/.test(REP_EMAIL_INPUT.value.trim());
   const pwOk    = REP_PW_INPUT.value.length >= 4;
-  CONNECT_BTN.disabled = !(PICKED_PRODUCT && emailOk && pwOk);
+  SIGNIN_BTN.disabled = !(emailOk && pwOk);
 }
-REP_EMAIL_INPUT.addEventListener('input', refreshConnectBtn);
-REP_PW_INPUT.addEventListener('input', refreshConnectBtn);
-REP_PW_INPUT.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !CONNECT_BTN.disabled) connect(); });
+REP_EMAIL_INPUT.addEventListener('input', refreshSigninBtn);
+REP_PW_INPUT.addEventListener('input', refreshSigninBtn);
+REP_PW_INPUT.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !SIGNIN_BTN.disabled) signin(); });
 
-async function connect() {
-  CONNECT_BTN.disabled = true;
-  ACTIVE_PRODUCT = PICKED_PRODUCT;
-  PROGRESS_EL.textContent = 'Authenticating…';
-
-  // Real auth — POST email + password to the backend
+async function signin() {
+  SIGNIN_BTN.disabled = true;
+  AUTH_PROGRESS.textContent = 'Signing in…';
   try {
     const r = await fetch(API_BASE + '/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: REP_EMAIL_INPUT.value.trim(),
-        password: REP_PW_INPUT.value,
-      }),
+      body: JSON.stringify({ email: REP_EMAIL_INPUT.value.trim(), password: REP_PW_INPUT.value }),
     });
     if (!r.ok) {
-      PROGRESS_EL.textContent = r.status === 401 ? 'Wrong email or password.' : ('Login failed: ' + r.status);
-      CONNECT_BTN.disabled = false;
+      AUTH_PROGRESS.textContent = r.status === 401 ? 'Wrong email or password.' : ('Sign in failed: ' + r.status);
+      SIGNIN_BTN.disabled = false;
       return;
     }
     const data = await r.json();
     setSession(data.token, data.user);
-  } catch (err) {
-    PROGRESS_EL.textContent = 'Network error — is the backend reachable?';
-    CONNECT_BTN.disabled = false;
-    return;
+    AUTH_PROGRESS.textContent = '';
+    goToProductStep();
+  } catch (e) {
+    AUTH_PROGRESS.textContent = 'Network error — is the backend reachable?';
+    SIGNIN_BTN.disabled = false;
   }
+}
+SIGNIN_BTN.addEventListener('click', signin);
 
-  // Remember just the product choice (NOT credentials — those live in SESSION_TOKEN)
-  localStorage.setItem('sp-portal-session', JSON.stringify({ productId: ACTIVE_PRODUCT.id }));
+/* STEP 1b — sign up */
+const SU_NAME = document.getElementById('su-name');
+const SU_EMAIL = document.getElementById('su-email');
+const SU_PW = document.getElementById('su-password');
+const SU_PW2 = document.getElementById('su-password2');
+function refreshSignupBtn() {
+  const ok = SU_NAME.value.trim().length >= 2
+          && /@/.test(SU_EMAIL.value.trim())
+          && SU_PW.value.length >= 6
+          && SU_PW.value === SU_PW2.value;
+  SIGNUP_BTN.disabled = !ok;
+}
+[SU_NAME, SU_EMAIL, SU_PW, SU_PW2].forEach(i => i.addEventListener('input', refreshSignupBtn));
+SU_PW2.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !SIGNUP_BTN.disabled) signup(); });
+
+async function signup() {
+  SIGNUP_BTN.disabled = true;
+  SIGNUP_PROGRESS.textContent = 'Creating your account…';
+  try {
+    const r = await fetch(API_BASE + '/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: SU_NAME.value.trim(),
+        email: SU_EMAIL.value.trim(),
+        password: SU_PW.value,
+      }),
+    });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => '');
+      SIGNUP_PROGRESS.textContent = r.status === 409 ? 'That email is already registered. Try signing in.' : ('Signup failed: ' + r.status + ' ' + txt);
+      SIGNUP_BTN.disabled = false;
+      return;
+    }
+    const data = await r.json();
+    setSession(data.token, data.user);
+    SIGNUP_PROGRESS.textContent = '';
+    goToProductStep();
+  } catch (e) {
+    SIGNUP_PROGRESS.textContent = 'Network error — is the backend reachable?';
+    SIGNUP_BTN.disabled = false;
+  }
+}
+SIGNUP_BTN.addEventListener('click', signup);
+
+document.getElementById('go-signup').addEventListener('click', (e) => {
+  e.preventDefault();
+  document.getElementById('step-signin').style.display = 'none';
+  document.getElementById('step-signup').style.display = '';
+});
+document.getElementById('go-signin').addEventListener('click', (e) => {
+  e.preventDefault();
+  document.getElementById('step-signup').style.display = 'none';
+  document.getElementById('step-signin').style.display = '';
+});
+
+/* Move from the auth step to the product picker step. Called from signin/signup. */
+function goToProductStep() {
+  document.getElementById('step-signin').style.display = 'none';
+  document.getElementById('step-signup').style.display = 'none';
+  document.getElementById('step-product').style.display = '';
+  document.getElementById('welcome-name').textContent = SESSION_USER.name;
+  renderProductCards();
+  refreshConnectBtn();
+}
+
+/* STEP 2 — product picker + connect */
+function refreshConnectBtn() {
+  CONNECT_BTN.disabled = !PICKED_PRODUCT;
+}
+
+async function connect() {
+  CONNECT_BTN.disabled = true;
+  ACTIVE_PRODUCT = PICKED_PRODUCT;
+  PROGRESS_EL.textContent = 'Loading…';
 
   // Optional: pre-warm linked PDF + JSON data so the rep can work offline
   if (DL_CHECKBOX.checked) {
