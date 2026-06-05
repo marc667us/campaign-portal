@@ -155,8 +155,11 @@
     <div class="logo">aiapp<span class="accent">invent</span> — Sales Campaign Portal</div>
     <div class="sub">Pick the product you're selling. Each rep is assigned to one product at a time.</div>
 
-    <label>Your name</label>
-    <input type="text" id="rep-name" placeholder="e.g. Akua Mensah" autofocus>
+    <label>Email</label>
+    <input type="email" id="rep-email" placeholder="you@aiappinvent.com" autofocus autocomplete="username">
+
+    <label>Password</label>
+    <input type="password" id="rep-password" placeholder="" autocomplete="current-password">
 
     <label>Product</label>
     <div class="product-list" id="product-list"></div>
@@ -193,8 +196,10 @@
   <div class="tab" data-tab="tech">Technical Guide</div>
   <div class="tab" data-tab="feedback">Feedback <span class="count" id="feedback-count">0</span></div>
   <div class="tab" data-tab="reports">Reports</div>
+  <div class="tab" data-tab="staff" style="display:none">Staff</div>
   <div class="tab" data-tab="data">Data</div>
   <div class="tab" data-tab="export">Export</div>
+  <div class="tab" data-tab="logout" id="logout-tab" style="margin-left:auto;color:#ce1126">Sign out</div>
 </div>
 
 <!-- ============================ PANEL: DASHBOARD ============================ -->
@@ -410,6 +415,48 @@
   </div>
 </div>
 
+<!-- ============================ PANEL: STAFF (admin only) ============================ -->
+<div class="panel" id="panel-staff">
+  <div class="entity-card" style="margin-bottom:14px">
+    <h3 style="margin:0 0 6px">Add a staff member</h3>
+    <p style="font-size:13px;color:#475569;margin:0 0 12px">
+      Admins can add sales reps, managers, and other admins. Each gets their own
+      email + password to sign in with. Passwords are PBKDF2-hashed; you cannot
+      see another user's password — use Reset to set a new one.
+    </p>
+    <div class="toolbar">
+      <input id="staff-email" type="email" placeholder="email@aiappinvent.com" style="min-width:220px">
+      <input id="staff-name"  type="text"  placeholder="Full name"            style="min-width:160px">
+      <input id="staff-pass"  type="text"  placeholder="Initial password"     style="min-width:160px">
+      <select id="staff-role">
+        <option value="sales" selected>Sales</option>
+        <option value="manager">Manager</option>
+        <option value="admin">Admin</option>
+      </select>
+      <select id="staff-product">
+        <option value="solarpro-ghana" selected>SolarPro Global — Ghana</option>
+      </select>
+      <button class="btn btn-primary" id="staff-add">Create user</button>
+    </div>
+  </div>
+
+  <div class="entity-card">
+    <h3 style="margin:0 0 8px">Current staff</h3>
+    <table>
+      <thead><tr>
+        <th>Name</th><th>Email</th><th style="width:90px">Role</th>
+        <th style="width:140px">Product</th><th style="width:110px">Created</th>
+        <th style="width:140px">Last login</th><th style="width:170px">Actions</th>
+      </tr></thead>
+      <tbody id="staff-tbody"></tbody>
+    </table>
+    <div class="hint" style="margin-top:10px">
+      Removing a user revokes their access immediately on their next request.
+      Reset sets a new password — share it once via a secure channel.
+    </div>
+  </div>
+</div>
+
 <!-- ============================ PANEL: DATA ============================ -->
 <div class="panel" id="panel-data">
   <div class="entity-card">
@@ -532,8 +579,13 @@ window.GHANA_ENTITIES.map(e => e.phones[0]).filter(Boolean);</pre>
    - Every fetch carries X-Campaign-Rep so the backend can audit who changed what.
    =============================================================== */
 const API_BASE = 'https://web-production-744af.up.railway.app/api/campaign';
-const API_KEY  = 'campaign-ghana-2026-beta';
-let   REP_NAME = '';  // set after login
+const API_KEY  = 'campaign-ghana-2026-beta';   // legacy soft-auth (still required for some writes)
+
+// Session state — set on login, read on every API call. Persisted to localStorage
+// so a browser refresh doesn't kick the rep back to the login screen.
+let SESSION_TOKEN = localStorage.getItem('sp-campaign-token') || '';
+let SESSION_USER  = JSON.parse(localStorage.getItem('sp-campaign-user') || 'null');
+let   REP_NAME    = SESSION_USER ? SESSION_USER.name : '';
 
 async function api(method, path, body) {
   const res = await fetch(API_BASE + path, {
@@ -542,11 +594,31 @@ async function api(method, path, body) {
       'Content-Type': 'application/json',
       'X-Campaign-Key': API_KEY,
       'X-Campaign-Rep': (REP_NAME || 'anon'),
+      'X-Campaign-Session': SESSION_TOKEN || '',
     },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`${method} ${path} -> ${res.status}`);
+  if (res.status === 401) { logout(); throw new Error('session expired'); }
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`${method} ${path} -> ${res.status} ${txt}`);
+  }
   return res.json();
+}
+
+function setSession(token, user) {
+  SESSION_TOKEN = token; SESSION_USER = user; REP_NAME = user.name;
+  localStorage.setItem('sp-campaign-token', token);
+  localStorage.setItem('sp-campaign-user', JSON.stringify(user));
+}
+
+function logout() {
+  SESSION_TOKEN = ''; SESSION_USER = null; REP_NAME = '';
+  localStorage.removeItem('sp-campaign-token');
+  localStorage.removeItem('sp-campaign-user');
+  localStorage.removeItem('sp-portal-session');
+  if (window._campaignPoll) clearInterval(window._campaignPoll);
+  location.reload();
 }
 
 /* ===============================================================
@@ -716,7 +788,8 @@ let CHARTS = {};
    =============================================================== */
 const PRODUCT_LIST_EL = document.getElementById('product-list');
 const CONNECT_BTN     = document.getElementById('connect-btn');
-const REP_INPUT       = document.getElementById('rep-name');
+const REP_EMAIL_INPUT = document.getElementById('rep-email');
+const REP_PW_INPUT    = document.getElementById('rep-password');
 const PROGRESS_EL     = document.getElementById('login-progress');
 const DL_CHECKBOX     = document.getElementById('dl-data');
 let   PICKED_PRODUCT  = null;
@@ -740,16 +813,44 @@ function renderProductCards() {
 }
 
 function refreshConnectBtn() {
-  CONNECT_BTN.disabled = !(PICKED_PRODUCT && REP_INPUT.value.trim().length >= 2);
+  const emailOk = /@/.test(REP_EMAIL_INPUT.value.trim());
+  const pwOk    = REP_PW_INPUT.value.length >= 4;
+  CONNECT_BTN.disabled = !(PICKED_PRODUCT && emailOk && pwOk);
 }
-REP_INPUT.addEventListener('input', refreshConnectBtn);
+REP_EMAIL_INPUT.addEventListener('input', refreshConnectBtn);
+REP_PW_INPUT.addEventListener('input', refreshConnectBtn);
+REP_PW_INPUT.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !CONNECT_BTN.disabled) connect(); });
 
 async function connect() {
   CONNECT_BTN.disabled = true;
-  REP_NAME = REP_INPUT.value.trim();
   ACTIVE_PRODUCT = PICKED_PRODUCT;
-  // Persist who's logged in so a reload skips the screen
-  localStorage.setItem('sp-portal-session', JSON.stringify({ rep: REP_NAME, productId: ACTIVE_PRODUCT.id }));
+  PROGRESS_EL.textContent = 'Authenticating…';
+
+  // Real auth — POST email + password to the backend
+  try {
+    const r = await fetch(API_BASE + '/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: REP_EMAIL_INPUT.value.trim(),
+        password: REP_PW_INPUT.value,
+      }),
+    });
+    if (!r.ok) {
+      PROGRESS_EL.textContent = r.status === 401 ? 'Wrong email or password.' : ('Login failed: ' + r.status);
+      CONNECT_BTN.disabled = false;
+      return;
+    }
+    const data = await r.json();
+    setSession(data.token, data.user);
+  } catch (err) {
+    PROGRESS_EL.textContent = 'Network error — is the backend reachable?';
+    CONNECT_BTN.disabled = false;
+    return;
+  }
+
+  // Remember just the product choice (NOT credentials — those live in SESSION_TOKEN)
+  localStorage.setItem('sp-portal-session', JSON.stringify({ productId: ACTIVE_PRODUCT.id }));
 
   // Optional: pre-warm linked PDF + JSON data so the rep can work offline
   if (DL_CHECKBOX.checked) {
@@ -765,8 +866,9 @@ async function connect() {
   // Activate dashboard
   document.getElementById('login').classList.add('hidden');
   document.getElementById('brand').innerHTML = ACTIVE_PRODUCT.name.replace(/—.*$/, '<span class="accent">—' + (ACTIVE_PRODUCT.name.split('—')[1] || '') + '</span>');
-  document.getElementById('rep-tag').textContent = REP_NAME + ' · ' + ACTIVE_PRODUCT.id;
+  document.getElementById('rep-tag').textContent = SESSION_USER.name + ' · ' + SESSION_USER.role;
   document.getElementById('topbar-meta').textContent = ACTIVE_PRODUCT.desc;
+  showStaffTabIfAdmin();
 
   // Paint instantly from the embedded list so the dashboard appears with no flash
   ENTITIES = loadState();
@@ -796,26 +898,59 @@ CONNECT_BTN.addEventListener('click', connect);
 
 document.getElementById('switch-product').addEventListener('click', (e) => {
   e.preventDefault();
-  localStorage.removeItem('sp-portal-session');
-  location.reload();
+  logout();
 });
 
-/* Auto-resume: if the rep already chose a product earlier, skip the login screen */
-(function autoResume() {
-  let s = null;
-  try { s = JSON.parse(localStorage.getItem('sp-portal-session') || 'null'); } catch (e) {}
-  if (s && s.productId) {
-    const p = PRODUCTS.find(x => x.id === s.productId);
-    if (p && p.status === 'active') {
-      PICKED_PRODUCT = p; REP_INPUT.value = s.rep || '';
-      // Pre-select card visually
-      renderProductCards();
-      const card = PRODUCT_LIST_EL.querySelector(`[data-id="${p.id}"]`);
-      if (card) card.classList.add('active');
-      refreshConnectBtn();
-      // Auto-connect immediately
-      if (REP_INPUT.value) { connect(); return; }
-    }
+/* Auto-resume: if a valid session token is still in localStorage, skip the
+   login screen entirely. We validate the token with /me before trusting it. */
+(async function autoResume() {
+  renderProductCards();
+
+  // No session → show the login screen, with email pre-filled if we know it
+  if (!SESSION_TOKEN || !SESSION_USER) {
+    if (SESSION_USER && SESSION_USER.email) REP_EMAIL_INPUT.value = SESSION_USER.email;
+    return;
+  }
+
+  // Token present → validate against the backend
+  try {
+    const r = await fetch(API_BASE + '/me', {
+      headers: { 'X-Campaign-Session': SESSION_TOKEN },
+    });
+    if (!r.ok) { logout(); return; }
+  } catch (e) {
+    // Network failure — let the rep stay logged in optimistically
+  }
+
+  // Resume the product they were on
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('sp-portal-session') || 'null'); } catch (e) {}
+  const p = (saved && PRODUCTS.find(x => x.id === saved.productId)) || PRODUCTS[0];
+  if (p && p.status === 'active') {
+    PICKED_PRODUCT = p;
+    const card = PRODUCT_LIST_EL.querySelector(`[data-id="${p.id}"]`);
+    if (card) card.classList.add('active');
+    ACTIVE_PRODUCT = PICKED_PRODUCT;
+    // Hide the login screen and hydrate the dashboard
+    document.getElementById('login').classList.add('hidden');
+    document.getElementById('brand').innerHTML = ACTIVE_PRODUCT.name.replace(/—.*$/, '<span class="accent">—' + (ACTIVE_PRODUCT.name.split('—')[1] || '') + '</span>');
+    document.getElementById('rep-tag').textContent = SESSION_USER.name + ' · ' + SESSION_USER.role;
+    document.getElementById('topbar-meta').textContent = ACTIVE_PRODUCT.desc;
+    ENTITIES = loadState();
+    renderKPIs(); renderTable();
+    buildFunnel(); buildRoles(); buildCities(); buildStatus(); renderPriorities();
+    loadStateCloud().then(list => {
+      ENTITIES = list;
+      renderKPIs(); renderTable();
+      buildFunnel(); buildRoles(); buildCities(); buildStatus(); renderPriorities();
+    });
+    if (window._campaignPoll) clearInterval(window._campaignPoll);
+    window._campaignPoll = setInterval(async () => {
+      try { ENTITIES = await loadStateCloud(); renderKPIs(); renderTable(); buildFunnel(); buildStatus(); renderPriorities(); }
+      catch (e) {}
+    }, 30000);
+    showStaffTabIfAdmin();
+    return;
   }
   renderProductCards();
 })();
@@ -833,7 +968,73 @@ document.querySelectorAll('.tab').forEach(t => {
     if (t.dataset.tab === 'data')     refreshDataPreview();
     if (t.dataset.tab === 'feedback') refreshFeedbackTab();
     if (t.dataset.tab === 'reports')  refreshReportsTab();
+    if (t.dataset.tab === 'staff')    refreshStaffTab();
   });
+});
+
+/* Show the Staff tab only when the logged-in user is admin. Called at
+   resume/connect time so the tab appears on the same paint as the dashboard. */
+function showStaffTabIfAdmin() {
+  const tab = document.querySelector('.tab[data-tab="staff"]');
+  if (!tab) return;
+  tab.style.display = (SESSION_USER && SESSION_USER.role === 'admin') ? '' : 'none';
+}
+
+/* ===============================================================
+   Staff tab — admin-only user management
+   =============================================================== */
+async function refreshStaffTab() {
+  try {
+    const users = await api('GET', '/users');
+    const tb = document.getElementById('staff-tbody');
+    tb.innerHTML = users.map(u => `
+      <tr>
+        <td><strong>${escapeHtml(u.name)}</strong></td>
+        <td>${escapeHtml(u.email)}</td>
+        <td><span class="role-${u.role}" style="font-size:10px;padding:2px 6px;border-radius:3px;font-weight:700;background:${u.role==='admin'?'#fee2e2':u.role==='manager'?'#fef3c7':'#e0f2fe'};color:${u.role==='admin'?'#991b1b':u.role==='manager'?'#854d0e':'#075985'}">${u.role}</span></td>
+        <td style="font-size:12px">${escapeHtml(u.product_id)}</td>
+        <td style="font-size:11px;color:#64748b">${u.created_at || '—'}</td>
+        <td style="font-size:11px;color:#64748b">${u.last_login || 'never'}</td>
+        <td>
+          <button class="btn-ghost" style="font-size:11px;padding:4px 8px" data-uid="${u.id}" data-act="reset">Reset PW</button>
+          <button class="btn-ghost" style="font-size:11px;padding:4px 8px;color:#ce1126;border-color:#fecaca" data-uid="${u.id}" data-act="del">Remove</button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:30px">No staff yet.</td></tr>';
+
+    tb.querySelectorAll('[data-act="del"]').forEach(b => b.addEventListener('click', async (ev) => {
+      const uid = ev.target.dataset.uid;
+      if (!confirm('Remove this user? They lose access immediately.')) return;
+      try { await api('DELETE', '/users/' + uid); refreshStaffTab(); }
+      catch (e) { alert(e.message); }
+    }));
+    tb.querySelectorAll('[data-act="reset"]').forEach(b => b.addEventListener('click', async (ev) => {
+      const uid = ev.target.dataset.uid;
+      const pw = prompt('New password for this user:');
+      if (!pw) return;
+      try { await api('POST', '/users/' + uid + '/reset-password', { password: pw }); alert('Password reset.'); }
+      catch (e) { alert(e.message); }
+    }));
+  } catch (e) { alert('Could not load staff: ' + e.message); }
+}
+
+document.getElementById('staff-add').addEventListener('click', async () => {
+  const email = document.getElementById('staff-email').value.trim();
+  const name  = document.getElementById('staff-name').value.trim();
+  const password = document.getElementById('staff-pass').value;
+  const role  = document.getElementById('staff-role').value;
+  const product_id = document.getElementById('staff-product').value;
+  if (!email || !name || !password) return alert('email, name, password required');
+  try {
+    await api('POST', '/users', { email, name, password, role, product_id });
+    document.getElementById('staff-email').value = '';
+    document.getElementById('staff-name').value = '';
+    document.getElementById('staff-pass').value = '';
+    refreshStaffTab();
+  } catch (e) { alert('Create failed: ' + e.message); }
+});
+
+document.getElementById('logout-tab').addEventListener('click', () => {
+  if (confirm('Sign out?')) logout();
 });
 
 /* Show the master JSON in the Data tab preview pane */
