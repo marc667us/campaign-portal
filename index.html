@@ -166,14 +166,14 @@
     <button class="connect-btn" id="signin-btn" disabled>Sign in</button>
     <div class="progress" id="auth-progress"></div>
     <div class="hint" style="margin-top:12px">
-      No account yet? <a href="#" id="go-signup" style="color:#ce1126;font-weight:700">Create one</a>
+      No account yet? Ask an admin for an invitation link.
     </div>
   </div>
 
-  <!-- STEP 1b: sign-up (new users) -->
+  <!-- STEP 1b: invite-only signup (only visible when ?invite=<token> is in the URL) -->
   <div class="login-card" id="step-signup" style="display:none">
-    <div class="logo">Create your account</div>
-    <div class="sub">Sign up to access the sales portal. New accounts start with the sales role; an admin can promote you later.</div>
+    <div class="logo">Accept your invitation</div>
+    <div class="sub" id="invite-note">Fill the form below. An admin will review and approve your account, then assign you a product.</div>
 
     <label>Full name</label>
     <input type="text" id="su-name" placeholder="e.g. Akua Mensah" autocomplete="name">
@@ -181,17 +181,27 @@
     <label>Email</label>
     <input type="email" id="su-email" placeholder="you@aiappinvent.com" autocomplete="username">
 
+    <label>Profession</label>
+    <input type="text" id="su-profession" placeholder="e.g. Sales Engineer / Account Manager">
+
     <label>Password (min 6 characters)</label>
     <input type="password" id="su-password" placeholder="" autocomplete="new-password">
 
     <label>Confirm password</label>
     <input type="password" id="su-password2" placeholder="" autocomplete="new-password">
 
-    <button class="connect-btn" id="signup-btn" disabled>Create account &amp; sign in</button>
+    <button class="connect-btn" id="signup-btn" disabled>Submit for approval</button>
     <div class="progress" id="signup-progress"></div>
     <div class="hint" style="margin-top:12px">
-      Already have an account? <a href="#" id="go-signin" style="color:#ce1126;font-weight:700">Sign in</a>
+      Already have an approved account? <a href="#" id="go-signin" style="color:#ce1126;font-weight:700">Sign in</a>
     </div>
+  </div>
+
+  <!-- STEP 1c: post-signup "pending approval" message -->
+  <div class="login-card" id="step-pending" style="display:none">
+    <div class="logo">Account submitted</div>
+    <div class="sub">Thanks! Your account is now waiting for an admin to review and assign your product. You will be able to sign in as soon as it's approved — usually within a business day.</div>
+    <button class="connect-btn" onclick="goSignin()">Back to sign in</button>
   </div>
 
   <!-- STEP 2: product picker (shown after successful sign-in) -->
@@ -456,27 +466,54 @@
 
 <!-- ============================ PANEL: STAFF (admin only) ============================ -->
 <div class="panel" id="panel-staff">
+
+  <!-- Invitation links -->
   <div class="entity-card" style="margin-bottom:14px">
-    <h3 style="margin:0 0 6px">Add a staff member</h3>
+    <h3 style="margin:0 0 6px">Invite a staff member</h3>
     <p style="font-size:13px;color:#475569;margin:0 0 12px">
-      Admins can add sales reps, managers, and other admins. Each gets their own
-      email + password to sign in with. Passwords are PBKDF2-hashed; you cannot
-      see another user's password — use Reset to set a new one.
+      Generate a one-time invitation link, then share it on WhatsApp / email.
+      The invitee fills their own name, email, password and profession. You'll
+      see them under <strong>Pending approvals</strong> below, where you assign
+      a product before they can sign in.
     </p>
     <div class="toolbar">
-      <input id="staff-email" type="email" placeholder="email@aiappinvent.com" style="min-width:220px">
-      <input id="staff-name"  type="text"  placeholder="Full name"            style="min-width:160px">
-      <input id="staff-pass"  type="text"  placeholder="Initial password"     style="min-width:160px">
-      <select id="staff-role">
-        <option value="sales" selected>Sales</option>
-        <option value="manager">Manager</option>
-        <option value="admin">Admin</option>
+      <input id="inv-note" type="text" placeholder="Note (who is this for?)" style="min-width:260px">
+      <select id="inv-expires">
+        <option value="3">Expires in 3 days</option>
+        <option value="7" selected>Expires in 7 days</option>
+        <option value="14">Expires in 14 days</option>
+        <option value="30">Expires in 30 days</option>
       </select>
-      <select id="staff-product">
-        <option value="solarpro-ghana" selected>SolarPro Global — Ghana</option>
-      </select>
-      <button class="btn btn-primary" id="staff-add">Create user</button>
+      <button class="btn btn-primary" id="inv-create">Generate link</button>
     </div>
+    <div id="inv-result" style="margin-top:10px;display:none;background:#f1f5f9;border-radius:6px;padding:10px 12px">
+      <div style="font-size:11.5px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Share this link via WhatsApp / email</div>
+      <code id="inv-url" style="font-size:12.5px;color:#0d1f3c;word-break:break-all"></code>
+      <button class="btn btn-ghost" style="margin-left:10px;font-size:11.5px;padding:5px 9px" id="inv-copy">Copy</button>
+    </div>
+    <h4 style="margin:20px 0 8px;font-size:13px;color:#475569">Active invitation links</h4>
+    <table style="font-size:12.5px">
+      <thead><tr><th>Note</th><th style="width:100px">Created</th><th style="width:140px">Expires</th><th>Used by</th><th style="width:90px">Actions</th></tr></thead>
+      <tbody id="inv-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- Pending approvals -->
+  <div class="entity-card" style="margin-bottom:14px">
+    <h3 style="margin:0 0 6px">Pending approvals <span id="pending-count" style="background:#fcd116;color:#0d1f3c;padding:2px 8px;border-radius:9px;font-size:11px;margin-left:6px">0</span></h3>
+    <p style="font-size:13px;color:#475569;margin:0 0 12px">
+      Sales reps that accepted your invitation. Review their info and assign a
+      product to activate their account.
+    </p>
+    <table style="font-size:12.5px">
+      <thead><tr>
+        <th>Name</th><th>Email</th><th style="width:140px">Profession</th>
+        <th style="width:100px">Submitted</th>
+        <th style="width:180px">Assign product + role</th>
+        <th style="width:90px">Action</th>
+      </tr></thead>
+      <tbody id="pending-tbody"></tbody>
+    </table>
   </div>
 
   <div class="entity-card">
@@ -891,44 +928,52 @@ async function signin() {
 }
 SIGNIN_BTN.addEventListener('click', signin);
 
-/* STEP 1b — sign up */
+/* STEP 1b — invite-only signup (form only visible when ?invite=<token> in URL) */
 const SU_NAME = document.getElementById('su-name');
 const SU_EMAIL = document.getElementById('su-email');
+const SU_PROF = document.getElementById('su-profession');
 const SU_PW = document.getElementById('su-password');
 const SU_PW2 = document.getElementById('su-password2');
+let INVITE_TOKEN = (new URLSearchParams(location.search)).get('invite') || '';
+
 function refreshSignupBtn() {
   const ok = SU_NAME.value.trim().length >= 2
           && /@/.test(SU_EMAIL.value.trim())
+          && SU_PROF.value.trim().length >= 2
           && SU_PW.value.length >= 6
           && SU_PW.value === SU_PW2.value;
   SIGNUP_BTN.disabled = !ok;
 }
-[SU_NAME, SU_EMAIL, SU_PW, SU_PW2].forEach(i => i.addEventListener('input', refreshSignupBtn));
+[SU_NAME, SU_EMAIL, SU_PROF, SU_PW, SU_PW2].forEach(i => i.addEventListener('input', refreshSignupBtn));
 SU_PW2.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !SIGNUP_BTN.disabled) signup(); });
 
 async function signup() {
+  if (!INVITE_TOKEN) {
+    SIGNUP_PROGRESS.textContent = 'No invitation token. You need an invite link from an admin.';
+    return;
+  }
   SIGNUP_BTN.disabled = true;
-  SIGNUP_PROGRESS.textContent = 'Creating your account…';
+  SIGNUP_PROGRESS.textContent = 'Submitting…';
   try {
-    const r = await fetch(API_BASE + '/register', {
+    const r = await fetch(`${API_BASE}/invite/${INVITE_TOKEN}/accept`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: SU_NAME.value.trim(),
         email: SU_EMAIL.value.trim(),
         password: SU_PW.value,
+        profession: SU_PROF.value.trim(),
       }),
     });
     if (!r.ok) {
-      const txt = await r.text().catch(() => '');
-      SIGNUP_PROGRESS.textContent = r.status === 409 ? 'That email is already registered. Try signing in.' : ('Signup failed: ' + r.status + ' ' + txt);
+      const map = {409:'That email is already registered.',410:'This invitation has expired or already been used.',404:'Invitation not found.'};
+      SIGNUP_PROGRESS.textContent = map[r.status] || ('Signup failed: ' + r.status);
       SIGNUP_BTN.disabled = false;
       return;
     }
-    const data = await r.json();
-    setSession(data.token, data.user);
-    SIGNUP_PROGRESS.textContent = '';
-    goToProductStep();
+    // Successful submit → show the "pending admin approval" message
+    document.getElementById('step-signup').style.display = 'none';
+    document.getElementById('step-pending').style.display = '';
   } catch (e) {
     SIGNUP_PROGRESS.textContent = 'Network error — is the backend reachable?';
     SIGNUP_BTN.disabled = false;
@@ -936,16 +981,37 @@ async function signup() {
 }
 SIGNUP_BTN.addEventListener('click', signup);
 
-document.getElementById('go-signup').addEventListener('click', (e) => {
-  e.preventDefault();
-  document.getElementById('step-signin').style.display = 'none';
-  document.getElementById('step-signup').style.display = '';
-});
 document.getElementById('go-signin').addEventListener('click', (e) => {
   e.preventDefault();
-  document.getElementById('step-signup').style.display = 'none';
-  document.getElementById('step-signin').style.display = '';
+  goSignin();
 });
+function goSignin() {
+  document.getElementById('step-signup').style.display = 'none';
+  document.getElementById('step-pending').style.display = 'none';
+  document.getElementById('step-signin').style.display = '';
+}
+
+/* If the page was opened with ?invite=<token>, validate it and show the signup form. */
+(async function handleInviteParam() {
+  if (!INVITE_TOKEN) return;
+  try {
+    const r = await fetch(`${API_BASE}/invite/${INVITE_TOKEN}`);
+    if (!r.ok) {
+      const map = {404:'Invitation not found.',410:'This invitation has expired or already been used.'};
+      alert(map[r.status] || ('Invitation invalid: ' + r.status));
+      return;
+    }
+    const data = await r.json();
+    document.getElementById('step-signin').style.display = 'none';
+    document.getElementById('step-signup').style.display = '';
+    if (data.note) {
+      document.getElementById('invite-note').textContent =
+        'Invitation: ' + data.note + ' — fill the form. An admin will review and approve, then assign your product.';
+    }
+  } catch (e) {
+    alert('Could not verify the invitation. Check your network connection.');
+  }
+})();
 
 /* Move from the auth step to the product picker step. Called from signin/signup. */
 function goToProductStep() {
@@ -1098,7 +1164,78 @@ function showStaffTabIfAdmin() {
 /* ===============================================================
    Staff tab — admin-only user management
    =============================================================== */
+function inviteUrl(token) {
+  // The invitee opens the portal with ?invite=<token> appended. This works
+  // for the production custom domain, the github.io URL, and local file paths.
+  const base = (location.origin === 'null' || location.origin.startsWith('file'))
+    ? 'https://campaign.aiappinvent.com/'
+    : location.origin + location.pathname.replace(/[^/]*$/, '');
+  return base + '?invite=' + token;
+}
+
 async function refreshStaffTab() {
+  // --- Invitations
+  try {
+    const invites = await api('GET', '/invites');
+    const tbI = document.getElementById('inv-tbody');
+    tbI.innerHTML = invites.map(i => `
+      <tr>
+        <td>${escapeHtml(i.note || '—')}</td>
+        <td style="color:#64748b">${(i.created_at || '').slice(0,10)}</td>
+        <td style="color:#64748b">${(i.expires_at || '').slice(0,16).replace('T',' ')}</td>
+        <td>${i.used_by_email ? escapeHtml(i.used_by_email) : '<em style="color:#94a3b8">not used</em>'}</td>
+        <td>
+          <button class="btn-ghost" style="font-size:11px;padding:4px 8px" data-tok="${i.token}" data-act="copy">Copy URL</button>
+          <button class="btn-ghost" style="font-size:11px;padding:4px 8px;color:#ce1126;border-color:#fecaca" data-tok="${i.token}" data-act="rev">Revoke</button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:20px">No invitations yet.</td></tr>';
+    tbI.querySelectorAll('[data-act="copy"]').forEach(b => b.addEventListener('click', (ev) => {
+      navigator.clipboard.writeText(inviteUrl(ev.target.dataset.tok))
+        .then(() => alert('Invite URL copied — paste it into WhatsApp.'))
+        .catch(() => prompt('Copy this URL manually:', inviteUrl(ev.target.dataset.tok)));
+    }));
+    tbI.querySelectorAll('[data-act="rev"]').forEach(b => b.addEventListener('click', async (ev) => {
+      if (!confirm('Revoke this invite link?')) return;
+      try { await api('DELETE', '/invites/' + ev.target.dataset.tok); refreshStaffTab(); }
+      catch (e) { alert(e.message); }
+    }));
+  } catch (e) { console.warn('invites load failed', e); }
+
+  // --- Pending approvals
+  try {
+    const pending = await api('GET', '/pending');
+    document.getElementById('pending-count').textContent = pending.length;
+    const tbP = document.getElementById('pending-tbody');
+    const productOpts = PRODUCTS.filter(p => p.status === 'active').map(p =>
+      `<option value="${p.id}">${p.name}</option>`).join('');
+    tbP.innerHTML = pending.map(u => `
+      <tr>
+        <td><strong>${escapeHtml(u.name)}</strong></td>
+        <td>${escapeHtml(u.email)}</td>
+        <td>${escapeHtml(u.profession)}</td>
+        <td style="color:#64748b">${u.created_at || '—'}</td>
+        <td>
+          <select class="approve-product" data-uid="${u.id}" style="font-size:11px;padding:4px 6px;width:100%">${productOpts}</select>
+          <select class="approve-role" data-uid="${u.id}" style="font-size:11px;padding:4px 6px;margin-top:4px;width:100%">
+            <option value="sales" selected>Sales</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
+          </select>
+        </td>
+        <td><button class="btn btn-primary" style="font-size:11px;padding:5px 9px" data-uid="${u.id}" data-act="approve">Approve</button></td>
+      </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px">No pending users.</td></tr>';
+    tbP.querySelectorAll('[data-act="approve"]').forEach(b => b.addEventListener('click', async (ev) => {
+      const uid = ev.target.dataset.uid;
+      const product_id = tbP.querySelector(`.approve-product[data-uid="${uid}"]`).value;
+      const role = tbP.querySelector(`.approve-role[data-uid="${uid}"]`).value;
+      try {
+        await api('POST', '/users/' + uid + '/approve', { product_id, role });
+        refreshStaffTab();
+      } catch (e) { alert('Approve failed: ' + e.message); }
+    }));
+  } catch (e) { console.warn('pending load failed', e); }
+
+  // --- Active users
   try {
     const users = await api('GET', '/users');
     const tb = document.getElementById('staff-tbody');
@@ -1131,6 +1268,36 @@ async function refreshStaffTab() {
     }));
   } catch (e) { alert('Could not load staff: ' + e.message); }
 }
+
+/* Generate a new invitation link */
+document.getElementById('inv-create').addEventListener('click', async () => {
+  const note = document.getElementById('inv-note').value.trim();
+  const expires_days = parseInt(document.getElementById('inv-expires').value, 10) || 7;
+  try {
+    const r = await api('POST', '/invites', { note, expires_days });
+    const url = inviteUrl(r.token);
+    document.getElementById('inv-result').style.display = '';
+    document.getElementById('inv-url').textContent = url;
+    document.getElementById('inv-copy').onclick = () =>
+      navigator.clipboard.writeText(url).then(() => alert('URL copied — share via WhatsApp.'))
+                                        .catch(() => prompt('Copy manually:', url));
+    document.getElementById('inv-note').value = '';
+    refreshStaffTab();
+  } catch (e) { alert('Could not create invite: ' + e.message); }
+});
+
+/* Auto-refresh pending count every 30 s so an admin sees new submissions fast */
+setInterval(async () => {
+  if (!SESSION_USER || SESSION_USER.role !== 'admin') return;
+  try {
+    const p = await api('GET', '/pending');
+    const badge = document.getElementById('pending-count');
+    if (badge) badge.textContent = p.length;
+    // Surface a small toast on the dashboard if there's anything new
+    const tab = document.querySelector('.tab[data-tab="staff"]');
+    if (tab && p.length) tab.innerHTML = 'Staff <span class="count" style="background:#fcd116">' + p.length + '</span>';
+  } catch (e) {}
+}, 30000);
 
 document.getElementById('staff-add').addEventListener('click', async () => {
   const email = document.getElementById('staff-email').value.trim();
