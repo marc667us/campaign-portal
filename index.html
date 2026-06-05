@@ -112,6 +112,23 @@
   /* Help text */
   .hint { font-size:11.5px; color:#94a3b8; margin-top:6px; }
 
+  /* Interactive tutorial overlay (in-portal walkthrough) */
+  #tour-backdrop { position:fixed; inset:0; background:rgba(13,31,60,.45); z-index:9500; display:none; }
+  #tour-popup    { position:fixed; z-index:9501; background:#fff; border-radius:12px; padding:18px 22px; box-shadow:0 24px 60px rgba(0,0,0,.4); max-width:380px; display:none; }
+  #tour-popup h4 { margin:0 0 6px; font-size:15px; color:#0d1f3c; }
+  #tour-popup p  { margin:0 0 12px; font-size:13px; color:#475569; line-height:1.5; }
+  #tour-popup .tour-btns { display:flex; justify-content:space-between; align-items:center; }
+  #tour-popup .tour-btns .step { font-size:11px; color:#94a3b8; }
+  #tour-popup .tour-btns button { font-size:12px; padding:6px 14px; border-radius:6px; cursor:pointer; border:0; font-weight:700; }
+  #tour-popup .tour-btns .prev { background:#e2e8f0; color:#475569; margin-right:6px; }
+  #tour-popup .tour-btns .next { background:#ce1126; color:#fff; }
+  #tour-popup .tour-btns .skip { background:transparent; color:#94a3b8; border:0; font-size:11px; }
+  .tour-highlight { position:relative; z-index:9502 !important; box-shadow:0 0 0 4px #fcd116, 0 0 0 9999px rgba(13,31,60,.45) !important; border-radius:6px; }
+
+  /* Help button (always visible after login) */
+  #help-btn { position:fixed; bottom:18px; right:18px; z-index:9000; background:#ce1126; color:#fff; border:0; padding:10px 16px; border-radius:24px; font-weight:700; font-size:13px; cursor:pointer; box-shadow:0 6px 20px rgba(206,17,38,.4); }
+  #help-btn:hover { background:#a30d1d; }
+
   /* Login overlay — first thing the rep sees */
   #login { position:fixed; inset:0; background:linear-gradient(135deg,#0d1f3c,#13284d); display:flex; align-items:center; justify-content:center; z-index:9999; }
   #login.hidden { display:none; }
@@ -148,6 +165,22 @@
 </style>
 </head>
 <body>
+
+<!-- ============================ INTERACTIVE TUTORIAL ============================ -->
+<div id="tour-backdrop"></div>
+<div id="tour-popup">
+  <h4 id="tour-title">Welcome to the sales portal</h4>
+  <p id="tour-text">Click Next to walk through what each part of the app does.</p>
+  <div class="tour-btns">
+    <span class="step" id="tour-step">Step 1 of —</span>
+    <div>
+      <button class="skip" id="tour-skip">Skip tour</button>
+      <button class="prev" id="tour-prev">Back</button>
+      <button class="next" id="tour-next">Next</button>
+    </div>
+  </div>
+</div>
+<button id="help-btn" style="display:none">Take the tour</button>
 
 <!-- ============================ LOGIN OVERLAY (three steps) ============================ -->
 <div id="login">
@@ -1050,6 +1083,7 @@ async function connect() {
   document.getElementById('rep-tag').textContent = SESSION_USER.name + ' · ' + SESSION_USER.role;
   document.getElementById('topbar-meta').textContent = ACTIVE_PRODUCT.desc;
   showStaffTabIfAdmin();
+  maybeAutoTour();
 
   // Paint instantly from the embedded list so the dashboard appears with no flash
   ENTITIES = loadState();
@@ -1131,6 +1165,7 @@ document.getElementById('switch-product').addEventListener('click', (e) => {
       catch (e) {}
     }, 30000);
     showStaffTabIfAdmin();
+  maybeAutoTour();
     return;
   }
   renderProductCards();
@@ -1318,6 +1353,100 @@ document.getElementById('staff-add').addEventListener('click', async () => {
 document.getElementById('logout-tab').addEventListener('click', () => {
   if (confirm('Sign out?')) logout();
 });
+
+/* ===============================================================
+   Interactive tutorial — guided tour of every tab.
+   - Runs automatically on first login (tracked in localStorage).
+   - Always relaunchable via the floating "Take the tour" button.
+   - Each step highlights a real DOM element and explains it.
+   =============================================================== */
+const TOUR_STEPS = [
+  { selector: '#brand', title: 'Welcome to aiappinvent Sales Portal',
+    text: 'This is your sales workspace. The top bar always shows which product you are selling and which user you are signed in as. Click any tab to navigate.' },
+  { selector: '.tab[data-tab="dashboard"]', title: 'Dashboard tab',
+    text: 'Live KPIs for the 7-stage pipeline — Invited, Contacted, Signed up, Active, Feedback, Nurtured, Paid — plus charts and today\'s priority list.' },
+  { selector: '.tab[data-tab="entities"]', title: 'Entities tab',
+    text: 'Your assigned customer accounts. Click Status to advance the pipeline, type notes, set a follow-up date, log when you sent literature, or sign them up on the SolarPro app.' },
+  { selector: '.tab[data-tab="sales"]', title: 'Sales Pitch tab',
+    text: 'The full inbound call script. Read it on your first call, refer to it during objection handling.' },
+  { selector: '.tab[data-tab="user"]', title: 'User Guide tab',
+    text: 'The customer-facing walkthrough of the SolarPro app. Share this with prospects who want to understand the workflow before signing up.' },
+  { selector: '.tab[data-tab="tech"]', title: 'Technical Guide tab',
+    text: 'Engineering basis — BS 7671, IEC 62548, full calculation method. Reference for the technical buyer.' },
+  { selector: '.tab[data-tab="feedback"]', title: 'Feedback tab',
+    text: 'When a customer reports a bug or feature request, capture it here. The first feedback automatically advances the customer to the FEEDBACK stage in the pipeline.' },
+  { selector: '.tab[data-tab="reports"]', title: 'Reports tab',
+    text: 'Generate two artifacts: a Markdown report for the admin, and a Claude-Code-ready prompt the admin uses to auto-patch the SolarPro app for reported bugs.' },
+  { selector: '.tab[data-tab="staff"]', title: 'Staff tab (admin only)',
+    text: 'Admins generate invitation links, share them via WhatsApp, then review and approve new staff submissions here. Each invite is tracked: who created it, who used it, when.' },
+  { selector: '.tab[data-tab="data"]', title: 'Data tab',
+    text: 'Download the entity master list in any format — CSV, vCard (for phone contacts), JSON. The vCard import puts all 15 customers in your phone with one tap.' },
+  { selector: '.tab[data-tab="export"]', title: 'Export tab',
+    text: 'Download your current pipeline state as a JSON snapshot for the Monday review or as a backup.' },
+];
+
+let TOUR_INDEX = 0;
+
+function showTour() {
+  document.getElementById('tour-backdrop').style.display = 'block';
+  document.getElementById('tour-popup').style.display = 'block';
+  renderTourStep();
+}
+
+function endTour() {
+  document.getElementById('tour-backdrop').style.display = 'none';
+  document.getElementById('tour-popup').style.display = 'none';
+  document.querySelectorAll('.tour-highlight').forEach(el => el.classList.remove('tour-highlight'));
+  localStorage.setItem('sp-portal-tour-done', '1');
+}
+
+function renderTourStep() {
+  // Skip steps whose target element is invisible (e.g. Staff tab when not admin)
+  while (TOUR_INDEX < TOUR_STEPS.length) {
+    const step = TOUR_STEPS[TOUR_INDEX];
+    const el = document.querySelector(step.selector);
+    if (el && el.offsetParent !== null) break;
+    TOUR_INDEX += (arguments[0] === 'back' ? -1 : 1);
+    if (TOUR_INDEX < 0) TOUR_INDEX = 0;
+  }
+  if (TOUR_INDEX >= TOUR_STEPS.length) { endTour(); return; }
+  const step = TOUR_STEPS[TOUR_INDEX];
+  const el = document.querySelector(step.selector);
+
+  document.querySelectorAll('.tour-highlight').forEach(e => e.classList.remove('tour-highlight'));
+  el.classList.add('tour-highlight');
+  document.getElementById('tour-title').textContent = step.title;
+  document.getElementById('tour-text').textContent = step.text;
+  document.getElementById('tour-step').textContent = `Step ${TOUR_INDEX + 1} of ${TOUR_STEPS.length}`;
+  document.getElementById('tour-prev').style.display = TOUR_INDEX === 0 ? 'none' : '';
+  document.getElementById('tour-next').textContent = TOUR_INDEX === TOUR_STEPS.length - 1 ? 'Finish' : 'Next';
+
+  // Position the popup near the highlighted element
+  const r = el.getBoundingClientRect();
+  const popup = document.getElementById('tour-popup');
+  let top = r.bottom + 12;
+  if (top + 220 > window.innerHeight) top = r.top - 230;
+  popup.style.top = Math.max(20, top) + 'px';
+  popup.style.left = Math.max(20, Math.min(window.innerWidth - 400, r.left)) + 'px';
+}
+
+document.getElementById('tour-next').addEventListener('click', () => {
+  if (TOUR_INDEX >= TOUR_STEPS.length - 1) { endTour(); return; }
+  TOUR_INDEX += 1; renderTourStep();
+});
+document.getElementById('tour-prev').addEventListener('click', () => {
+  TOUR_INDEX -= 1; if (TOUR_INDEX < 0) TOUR_INDEX = 0; renderTourStep('back');
+});
+document.getElementById('tour-skip').addEventListener('click', endTour);
+document.getElementById('help-btn').addEventListener('click', () => { TOUR_INDEX = 0; showTour(); });
+
+/* Run the tour automatically on first login. */
+function maybeAutoTour() {
+  document.getElementById('help-btn').style.display = '';
+  if (!localStorage.getItem('sp-portal-tour-done')) {
+    setTimeout(() => { TOUR_INDEX = 0; showTour(); }, 600);
+  }
+}
 
 /* Show the master JSON in the Data tab preview pane */
 function refreshDataPreview() {
