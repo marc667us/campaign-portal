@@ -278,14 +278,12 @@
 <div class="tabs">
   <div class="tab active" data-tab="dashboard">Dashboard</div>
   <div class="tab" data-tab="entities">Customers <span class="count" id="entity-count">0</span></div>
-  <div class="tab" data-tab="sales">Sales Pitch</div>
-  <div class="tab" data-tab="user">User Guide</div>
-  <div class="tab" data-tab="tech">Technical Guide</div>
+  <div class="tab" data-tab="guides">Guides &amp; Tutorials</div>
   <div class="tab" data-tab="feedback">Feedback <span class="count" id="feedback-count">0</span></div>
-  <div class="tab" data-tab="reports">Reports</div>
-  <div class="tab" data-tab="staff" style="display:none">Staff</div>
-  <div class="tab" data-tab="data">Data</div>
-  <div class="tab" data-tab="export">Export</div>
+  <div class="tab admin-only" data-tab="staff" style="display:none">Staff</div>
+  <div class="tab admin-only" data-tab="reports" style="display:none">Reports</div>
+  <div class="tab admin-only" data-tab="data" style="display:none">Data</div>
+  <div class="tab admin-only" data-tab="export" style="display:none">Export</div>
   <div class="tab" data-tab="logout" id="logout-tab" style="margin-left:auto;color:#ce1126">Sign out</div>
 </div>
 
@@ -381,37 +379,31 @@
   </div>
 </div>
 
-<!-- ============================ PANEL: SALES PITCH ============================ -->
-<div class="panel" id="panel-sales">
+<!-- ============================ PANEL: GUIDES & TUTORIALS (unified for all staff) ============================ -->
+<div class="panel" id="panel-guides">
   <div class="entity-card">
-    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-      <a href="docs/SolarPro_Sales_Pitch.pdf" target="_blank" class="btn btn-primary" style="text-decoration:none">📄 Open Sales Pitch (full screen)</a>
-      <a href="docs/SolarPro_Sales_Pitch.pdf" download class="btn btn-ghost" style="text-decoration:none">⬇ Download</a>
-      <a href="docs/Ghana_Solar_Suppliers_Beta_Invitees.pdf" target="_blank" class="btn btn-ghost" style="text-decoration:none">Suppliers list</a>
-      <a href="docs/Ghana_Solar_Installers_Beta_Invitees.pdf" target="_blank" class="btn btn-ghost" style="text-decoration:none">Installers list</a>
-    </div>
-    <iframe class="doc-frame" src="docs/SolarPro_Sales_Pitch.pdf" style="height:600px"></iframe>
-  </div>
-</div>
+    <h3 style="margin:0 0 6px">Guides &amp; Tutorials</h3>
+    <p style="font-size:13px;color:#475569;margin:0 0 14px">
+      Everything you need to sell SolarPro Global. Open in full screen or download to share with prospects.
+    </p>
 
-<!-- ============================ PANEL: USER GUIDE ============================ -->
-<div class="panel" id="panel-user">
-  <div class="entity-card">
-    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-      <a href="docs/SolarPro_User_Guide.pdf" target="_blank" class="btn btn-primary" style="text-decoration:none">📘 Open User Guide (full screen)</a>
-      <a href="docs/SolarPro_User_Guide.pdf" download class="btn btn-ghost" style="text-decoration:none">⬇ Download</a>
+    <!-- Doc switcher -->
+    <div id="guide-switcher" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <button class="btn btn-primary guide-btn" data-doc="sales">📄 Sales Pitch</button>
+      <button class="btn btn-ghost guide-btn" data-doc="user">📘 User Guide</button>
+      <button class="btn btn-ghost guide-btn" data-doc="tech">⚙ Technical Guide</button>
+      <button class="btn btn-ghost guide-btn" data-doc="suppliers">Suppliers list</button>
+      <button class="btn btn-ghost guide-btn" data-doc="installers">Installers list</button>
     </div>
-    <iframe class="doc-frame" src="docs/SolarPro_User_Guide.pdf" style="height:600px"></iframe>
-  </div>
-</div>
 
-<!-- ============================ PANEL: TECH GUIDE ============================ -->
-<div class="panel" id="panel-tech">
-  <div class="entity-card">
-    <div class="doc-links">
-      <a href="docs/SolarPro_Technical_Guide.pdf" target="_blank">Open Technical Guide PDF</a>
+    <!-- Action row for the selected doc -->
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+      <a id="guide-open" href="docs/SolarPro_Sales_Pitch.pdf" target="_blank" class="btn btn-primary" style="text-decoration:none">↗ Open in full screen</a>
+      <a id="guide-download" href="docs/SolarPro_Sales_Pitch.pdf" download class="btn btn-ghost" style="text-decoration:none">⬇ Download PDF</a>
+      <span id="guide-title" style="font-size:12.5px;color:#475569;font-weight:600">SolarPro — Sales Pitch</span>
     </div>
-    <iframe class="doc-frame" src="docs/SolarPro_Technical_Guide.pdf"></iframe>
+
+    <iframe id="guide-frame" class="doc-frame" src="docs/SolarPro_Sales_Pitch.pdf" style="height:620px;width:100%;border:1px solid #e2e8f0;border-radius:6px"></iframe>
   </div>
 </div>
 
@@ -1195,15 +1187,39 @@ document.querySelectorAll('.tab').forEach(t => {
     if (t.dataset.tab === 'feedback') refreshFeedbackTab();
     if (t.dataset.tab === 'reports')  refreshReportsTab();
     if (t.dataset.tab === 'staff')    refreshStaffTab();
+    if (t.dataset.tab === 'guides')   refreshGuidesTab();
   });
 });
+
+/* Guides & Tutorials tab — single-doc switcher for the 5 PDFs */
+const GUIDE_DOCS = {
+  sales:      { title: 'SolarPro — Sales Pitch',      file: 'docs/SolarPro_Sales_Pitch.pdf' },
+  user:       { title: 'SolarPro — User Guide',       file: 'docs/SolarPro_User_Guide.pdf' },
+  tech:       { title: 'SolarPro — Technical Guide',  file: 'docs/SolarPro_Technical_Guide.pdf' },
+  suppliers:  { title: 'Ghana Solar Suppliers list',  file: 'docs/Ghana_Solar_Suppliers_Beta_Invitees.pdf' },
+  installers: { title: 'Ghana Solar Installers list', file: 'docs/Ghana_Solar_Installers_Beta_Invitees.pdf' },
+};
+function refreshGuidesTab() {
+  document.querySelectorAll('.guide-btn').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('.guide-btn').forEach(x => { x.classList.remove('btn-primary'); x.classList.add('btn-ghost'); });
+      b.classList.remove('btn-ghost'); b.classList.add('btn-primary');
+      const d = GUIDE_DOCS[b.dataset.doc];
+      document.getElementById('guide-title').textContent = d.title;
+      document.getElementById('guide-open').href = d.file;
+      document.getElementById('guide-download').href = d.file;
+      document.getElementById('guide-frame').src = d.file;
+    };
+  });
+}
 
 /* Show the Staff tab only when the logged-in user is admin. Called at
    resume/connect time so the tab appears on the same paint as the dashboard. */
 function showStaffTabIfAdmin() {
-  const tab = document.querySelector('.tab[data-tab="staff"]');
-  if (!tab) return;
-  tab.style.display = (SESSION_USER && SESSION_USER.role === 'admin') ? '' : 'none';
+  // Staff, Reports, Data, Export are all admin-only — toggle them as a group
+  const adminOnly = document.querySelectorAll('.tab.admin-only');
+  const show = (SESSION_USER && SESSION_USER.role === 'admin');
+  adminOnly.forEach(tab => { tab.style.display = show ? '' : 'none'; });
 }
 
 /* ===============================================================
