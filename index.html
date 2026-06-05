@@ -524,6 +524,32 @@ window.GHANA_ENTITIES.map(e => e.phones[0]).filter(Boolean);</pre>
    =============================================================== */
 
 /* ===============================================================
+   CLOUD BACKEND CONFIG
+   - All shared state lives in solar.db on Railway, fronted by the SolarPro
+     Flask app's /api/campaign/* routes (campaign_api.py).
+   - The X-Campaign-Key header is a soft-auth gate (internal portal, not a
+     real secret — replace by setting CAMPAIGN_API_KEY on Railway).
+   - Every fetch carries X-Campaign-Rep so the backend can audit who changed what.
+   =============================================================== */
+const API_BASE = 'https://web-production-744af.up.railway.app/api/campaign';
+const API_KEY  = 'campaign-ghana-2026-beta';
+let   REP_NAME = '';  // set after login
+
+async function api(method, path, body) {
+  const res = await fetch(API_BASE + path, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Campaign-Key': API_KEY,
+      'X-Campaign-Rep': (REP_NAME || 'anon'),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`${method} ${path} -> ${res.status}`);
+  return res.json();
+}
+
+/* ===============================================================
    PRODUCTS REGISTRY — every app the agency sells goes in here.
    Each product:
      id          – key used for localStorage namespacing
@@ -570,7 +596,7 @@ const PRODUCTS = [
 ];
 
 let ACTIVE_PRODUCT = null;     // set after login
-let REP_NAME = '';
+// REP_NAME is declared up top with the API helpers.
 
 /* Storage key is namespaced per product so reps switching products keep their work */
 function storageKey() { return 'sp-portal-pipeline::' + (ACTIVE_PRODUCT ? ACTIVE_PRODUCT.id : 'none'); }
@@ -598,41 +624,88 @@ const MASTER = JSON.parse(document.getElementById('entities-data').textContent);
 // Expose the array globally so other tools (DevTools, bookmarklets) can grab it
 window.GHANA_ENTITIES = MASTER.entities;
 
-/* Load saved state from localStorage and merge over master list.
-   Inputs:  none (reads localStorage)
-   Output:  array of entities with current pipeline state baked in
-   Why:     entity master never changes; only the user's per-entity edits do. */
-function loadState() {
-  let saved = {};
-  try { saved = JSON.parse(localStorage.getItem(storageKey()) || '{}'); } catch(e){}
-  return MASTER.entities.map(e => {
-    const s = saved[e.name] || {};
-    return Object.assign({}, e, {
-      status: s.status || 'INVITED',
-      notes:  s.notes  || e.notes_seed || '',
-      next_action_date: s.next_action_date || '',
-      last_updated: s.last_updated || null,
-      // NEW per-entity tracking aligned with the expanded sales pipeline
-      literature_sent: s.literature_sent || [],   // [{date, channel, items}]
-      feedback: s.feedback || [],                 // [{date, type, severity, text, status}]
+/* CLOUD LOAD — pulls the entity master + everyone's pipeline + feedback from
+   the SolarPro Flask backend. Every rep sees the same data.
+
+   Inputs:  none (uses API_BASE)
+   Output:  array of merged entities ready for the dashboard
+   Fallback: if the network is down, we fall back to MASTER (embedded list)
+            with empty pipeline state so the UI is at least navigable.
+*/
+async function loadStateCloud() {
+  try {
+    const [eRes, sRes] = await Promise.all([
+      api('GET', '/entities'),
+      api('GET', '/state'),
+    ]);
+    const masterByName = {};
+    (eRes.entities || []).forEach(e => masterByName[e.name] = e);
+    // If the API has zero entities (cold backend), fall back to embedded list
+    const baseList = (eRes.entities && eRes.entities.length) ? eRes.entities : MASTER.entities;
+    const pipeline = sRes.pipeline || {};
+    const fbByName = sRes.feedback || {};
+    return baseList.map(e => {
+      const s = pipeline[e.name] || {};
+      return Object.assign({}, e, {
+        status:           s.status || 'INVITED',
+        notes:            s.notes || e.notes_seed || '',
+        next_action_date: s.next_action_date || '',
+        literature_sent:  s.literature_sent || [],
+        feedback:         fbByName[e.name] || [],
+        last_updated:     s.last_updated || null,
+      });
     });
-  });
+  } catch (err) {
+    console.warn('[campaign] cloud load failed, using embedded list', err);
+    return MASTER.entities.map(e => Object.assign({}, e, {
+      status: 'INVITED', notes: e.notes_seed || '',
+      next_action_date: '', literature_sent: [], feedback: [],
+    }));
+  }
 }
 
-/* Save the per-entity overrides only — keeps storage small */
-function saveState(entities) {
-  const out = {};
-  entities.forEach(e => {
-    out[e.name] = {
-      status: e.status,
-      notes:  e.notes,
+/* CLOUD SAVE — persists ONE entity's pipeline row. We don't push the whole
+   list every time; the backend tracks per-entity rows. */
+async function saveEntity(e) {
+  try {
+    await api('POST', '/state/' + encodeURIComponent(e.name), {
+      status: e.status, notes: e.notes,
       next_action_date: e.next_action_date,
-      last_updated: new Date().toISOString().slice(0,10),
-      literature_sent: e.literature_sent,
-      feedback: e.feedback,
-    };
-  });
-  localStorage.setItem(storageKey(), JSON.stringify(out));
+      literature_sent: e.literature_sent || [],
+    });
+  } catch (err) { console.error('[campaign] saveEntity failed', err); }
+}
+
+/* CLOUD FEEDBACK — append a feedback item via the backend, return the new id. */
+async function saveFeedback(entityName, item) {
+  try {
+    const r = await api('POST', '/feedback', Object.assign({ entity_name: entityName }, item));
+    return r.id;
+  } catch (err) { console.error('[campaign] saveFeedback failed', err); return null; }
+}
+
+async function patchFeedbackStatus(id, status) {
+  try { await api('PATCH', '/feedback/' + id, { status }); }
+  catch (err) { console.error('[campaign] patchFeedbackStatus failed', err); }
+}
+
+/* ===============================================================
+   Compat shims so the existing UI code (which calls loadState() and
+   saveState(ENTITIES) synchronously) keeps working with the cloud backend.
+
+   - loadState(): returns a sync snapshot (MASTER decorated with empty state).
+     The real cloud data is pulled by connect() via loadStateCloud().
+   - saveState(): fires per-entity saves to the cloud in the background.
+     We don't await — UI stays snappy; failures are logged to the console.
+   =============================================================== */
+function loadState() {
+  return MASTER.entities.map(e => Object.assign({}, e, {
+    status: 'INVITED', notes: e.notes_seed || '',
+    next_action_date: '', literature_sent: [], feedback: [],
+  }));
+}
+function saveState(entities) {
+  entities.forEach(e => { saveEntity(e); });  // fire-and-forget
 }
 
 let ENTITIES = [];
@@ -695,9 +768,28 @@ async function connect() {
   document.getElementById('rep-tag').textContent = REP_NAME + ' · ' + ACTIVE_PRODUCT.id;
   document.getElementById('topbar-meta').textContent = ACTIVE_PRODUCT.desc;
 
+  // Paint instantly from the embedded list so the dashboard appears with no flash
   ENTITIES = loadState();
   renderKPIs(); renderTable();
   buildFunnel(); buildRoles(); buildCities(); buildStatus(); renderPriorities();
+
+  // Then hydrate from the cloud and re-render once data lands
+  loadStateCloud().then(list => {
+    ENTITIES = list;
+    renderKPIs(); renderTable();
+    buildFunnel(); buildRoles(); buildCities(); buildStatus(); renderPriorities();
+  });
+
+  // Poll every 30 s so reps see each others' updates without refreshing
+  if (window._campaignPoll) clearInterval(window._campaignPoll);
+  window._campaignPoll = setInterval(async () => {
+    try {
+      const list = await loadStateCloud();
+      ENTITIES = list;
+      renderKPIs(); renderTable();
+      buildFunnel(); buildStatus(); renderPriorities();
+    } catch (e) { /* polling is best-effort */ }
+  }, 30000);
 }
 
 CONNECT_BTN.addEventListener('click', connect);
@@ -918,22 +1010,26 @@ function renderTable() {
   }).join('') || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:30px">No entities match — adjust filters.</td></tr>';
 
   // Wire up status dropdowns
+  // Each handler now persists exactly ONE entity — far fewer cloud round-trips.
   tb.querySelectorAll('.status').forEach(sel => sel.addEventListener('change', (e) => {
     const i = +e.target.dataset.i;
     ENTITIES[i].status = e.target.value;
     e.target.dataset.state = e.target.value;
-    saveState(ENTITIES);
+    saveEntity(ENTITIES[i]);
     renderKPIs(); buildFunnel(); buildStatus(); renderPriorities();
   }));
+  // Notes get a 600 ms debounce so we don't fire a request per keystroke
+  const noteTimers = {};
   tb.querySelectorAll('.note').forEach(t => t.addEventListener('input', (e) => {
     const i = +e.target.dataset.i;
     ENTITIES[i].notes = e.target.value;
-    saveState(ENTITIES);
+    clearTimeout(noteTimers[i]);
+    noteTimers[i] = setTimeout(() => saveEntity(ENTITIES[i]), 600);
   }));
   tb.querySelectorAll('.next-date').forEach(d => d.addEventListener('change', (e) => {
     const i = +e.target.dataset.i;
     ENTITIES[i].next_action_date = e.target.value;
-    saveState(ENTITIES);
+    saveEntity(ENTITIES[i]);
     renderPriorities();
   }));
   tb.querySelectorAll('.btn-lit').forEach(b => b.addEventListener('click', (ev) => {
@@ -946,7 +1042,7 @@ function renderTable() {
       items: ['Sales Pitch', 'User Guide', 'Technical Guide']
     });
     if (ENTITIES[i].status === 'INVITED') ENTITIES[i].status = 'CONTACTED';
-    saveState(ENTITIES);
+    saveEntity(ENTITIES[i]);
     renderKPIs(); renderTable(); buildFunnel(); buildStatus(); renderPriorities();
   }));
 }
@@ -1060,8 +1156,9 @@ function renderFeedbackList() {
 
   tb.querySelectorAll('.fb-status').forEach(s => s.addEventListener('change', (ev) => {
     const ei = +ev.target.dataset.ei, fi = +ev.target.dataset.fi;
-    ENTITIES[ei].feedback[fi].status = ev.target.value;
-    saveState(ENTITIES);
+    const item = ENTITIES[ei].feedback[fi];
+    item.status = ev.target.value;
+    if (item.id) patchFeedbackStatus(item.id, item.status);   // cloud sync
     renderKPIs();
   }));
   tb.querySelectorAll('.fb-del').forEach(b => b.addEventListener('click', (ev) => {
@@ -1073,21 +1170,26 @@ function renderFeedbackList() {
   }));
 }
 
-document.getElementById('fb-add').addEventListener('click', () => {
+document.getElementById('fb-add').addEventListener('click', async () => {
   const ei = +document.getElementById('fb-entity').value;
   if (Number.isNaN(ei)) return alert('Pick a customer first.');
   const text = document.getElementById('fb-text').value.trim();
   if (!text) return alert('Describe the feedback.');
-  ENTITIES[ei].feedback.push({
+  const item = {
     date: new Date().toISOString().slice(0,10),
     type: document.getElementById('fb-type').value,
     severity: document.getElementById('fb-severity').value,
     text, status: 'open'
-  });
+  };
+  // Cloud persist FIRST so we get a row id; then mirror locally for instant UI
+  const newId = await saveFeedback(ENTITIES[ei].name, item);
+  if (newId) item.id = newId;
+  ENTITIES[ei].feedback.push(item);
   // Auto-advance pipeline: first feedback = enters FEEDBACK stage
-  if (ENTITIES[ei].status === 'SIGNED UP' || ENTITIES[ei].status === 'ACTIVE')
+  if (ENTITIES[ei].status === 'SIGNED UP' || ENTITIES[ei].status === 'ACTIVE') {
     ENTITIES[ei].status = 'FEEDBACK';
-  saveState(ENTITIES);
+    saveEntity(ENTITIES[ei]);
+  }
   document.getElementById('fb-text').value = '';
   renderFeedbackList(); renderKPIs(); buildFunnel(); buildStatus(); renderPriorities();
 });
