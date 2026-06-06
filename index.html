@@ -1194,15 +1194,15 @@ document.querySelectorAll('.tab').forEach(t => {
    Pattern matches setTutorialVideo() — admins paste a SoundCloud / Loom /
    Dropbox audio share URL once, every rep sees the button. */
 const AUDIO_TUTORIALS = [
-  { id:'user',  title:'User walkthrough', desc:'Walks a prospect through the SolarPro app workflow.', lsKey:'sp-audio-user-url' },
-  { id:'tech',  title:'Technical walkthrough', desc:'BS 7671 / IEC 62548 engineering basis for the technical buyer.', lsKey:'sp-audio-tech-url' },
+  { id:'user', title:'User walkthrough (7.5 min)',  desc:'How the SolarPro app works — from project setup through bankable proposal. Send to non-technical prospects.', lsKey:'sp-audio-user-url', defaultUrl:'docs/audio_user_walkthrough.wav' },
+  { id:'tech', title:'Technical walkthrough (17 min)', desc:'BS 7671 / IEC 62548 engineering basis, sizing math, BoQ logic. Send to the technical buyer.',                lsKey:'sp-audio-tech-url', defaultUrl:'docs/audio_tech_walkthrough.wav' },
 ];
 
 function refreshGuidesTab() {
   const root = document.getElementById('audio-tutorial-list');
   if (!root) return;
   root.innerHTML = AUDIO_TUTORIALS.map(t => {
-    const url = localStorage.getItem(t.lsKey) || '';
+    const url = localStorage.getItem(t.lsKey) || t.defaultUrl || '';
     const has = !!url;
     return `
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px">
