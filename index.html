@@ -387,23 +387,21 @@
       Everything you need to sell SolarPro Global. Open in full screen or download to share with prospects.
     </p>
 
-    <!-- Doc switcher -->
-    <div id="guide-switcher" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-      <button class="btn btn-primary guide-btn" data-doc="sales">📄 Sales Pitch</button>
-      <button class="btn btn-ghost guide-btn" data-doc="user">📘 User Guide</button>
-      <button class="btn btn-ghost guide-btn" data-doc="tech">⚙ Technical Guide</button>
-      <button class="btn btn-ghost guide-btn" data-doc="suppliers">Suppliers list</button>
-      <button class="btn btn-ghost guide-btn" data-doc="installers">Installers list</button>
+    <!-- Sales pitch (kept as PDF for internal rep use) -->
+    <h4 style="font-size:11.5px;color:#475569;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin:8px 0 8px">Sales script (internal — read before every call)</h4>
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <a href="docs/SolarPro_Sales_Pitch.pdf" target="_blank" class="btn btn-primary" style="text-decoration:none">📄 Open Sales Script</a>
+      <a href="docs/SolarPro_Sales_Pitch.pdf" download class="btn btn-ghost" style="text-decoration:none">⬇ Download</a>
     </div>
+    <iframe class="doc-frame" src="docs/SolarPro_Sales_Pitch.pdf" style="height:520px;width:100%;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:24px"></iframe>
 
-    <!-- Action row for the selected doc -->
-    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
-      <a id="guide-open" href="docs/SolarPro_Sales_Pitch.pdf" target="_blank" class="btn btn-primary" style="text-decoration:none">↗ Open in full screen</a>
-      <a id="guide-download" href="docs/SolarPro_Sales_Pitch.pdf" download class="btn btn-ghost" style="text-decoration:none">⬇ Download PDF</a>
-      <span id="guide-title" style="font-size:12.5px;color:#475569;font-weight:600">SolarPro — Sales Pitch</span>
-    </div>
+    <hr style="margin:24px 0;border:0;border-top:1px solid #e2e8f0">
 
-    <iframe id="guide-frame" class="doc-frame" src="docs/SolarPro_Sales_Pitch.pdf" style="height:620px;width:100%;border:1px solid #e2e8f0;border-radius:6px"></iframe>
+    <!-- Audio tutorials — shared with prospects -->
+    <h4 style="font-size:11.5px;color:#475569;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin:8px 0 8px">Audio tutorials (send these to prospects)</h4>
+    <p style="font-size:13px;color:#64748b;margin:0 0 14px">Record the user-flow and technical walkthroughs as audio (5–8 min each) and paste the share URLs below. Reps will get one-click "Listen" + "Copy link" buttons.</p>
+
+    <div id="audio-tutorial-list" style="display:grid;grid-template-columns:1fr 1fr;gap:14px"></div>
   </div>
 </div>
 
@@ -1191,25 +1189,53 @@ document.querySelectorAll('.tab').forEach(t => {
   });
 });
 
-/* Guides & Tutorials tab — single-doc switcher for the 5 PDFs */
-const GUIDE_DOCS = {
-  sales:      { title: 'SolarPro — Sales Pitch',      file: 'docs/SolarPro_Sales_Pitch.pdf' },
-  user:       { title: 'SolarPro — User Guide',       file: 'docs/SolarPro_User_Guide.pdf' },
-  tech:       { title: 'SolarPro — Technical Guide',  file: 'docs/SolarPro_Technical_Guide.pdf' },
-  suppliers:  { title: 'Ghana Solar Suppliers list',  file: 'docs/Ghana_Solar_Suppliers_Beta_Invitees.pdf' },
-  installers: { title: 'Ghana Solar Installers list', file: 'docs/Ghana_Solar_Installers_Beta_Invitees.pdf' },
-};
+/* Guides & Tutorials tab — sales script (PDF) + audio tutorial cards (URLs the
+   admin sets once via the console, persisted to localStorage).
+   Pattern matches setTutorialVideo() — admins paste a SoundCloud / Loom /
+   Dropbox audio share URL once, every rep sees the button. */
+const AUDIO_TUTORIALS = [
+  { id:'user',  title:'User walkthrough', desc:'Walks a prospect through the SolarPro app workflow.', lsKey:'sp-audio-user-url' },
+  { id:'tech',  title:'Technical walkthrough', desc:'BS 7671 / IEC 62548 engineering basis for the technical buyer.', lsKey:'sp-audio-tech-url' },
+];
+
 function refreshGuidesTab() {
-  document.querySelectorAll('.guide-btn').forEach(b => {
-    b.onclick = () => {
-      document.querySelectorAll('.guide-btn').forEach(x => { x.classList.remove('btn-primary'); x.classList.add('btn-ghost'); });
-      b.classList.remove('btn-ghost'); b.classList.add('btn-primary');
-      const d = GUIDE_DOCS[b.dataset.doc];
-      document.getElementById('guide-title').textContent = d.title;
-      document.getElementById('guide-open').href = d.file;
-      document.getElementById('guide-download').href = d.file;
-      document.getElementById('guide-frame').src = d.file;
-    };
+  const root = document.getElementById('audio-tutorial-list');
+  if (!root) return;
+  root.innerHTML = AUDIO_TUTORIALS.map(t => {
+    const url = localStorage.getItem(t.lsKey) || '';
+    const has = !!url;
+    return `
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px">
+        <div style="font-weight:700;color:#0d1f3c;font-size:14px">${t.title}</div>
+        <div style="font-size:12px;color:#64748b;margin:3px 0 10px">${t.desc}</div>
+        ${has ? `
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <a href="${url}" target="_blank" class="btn btn-primary" style="font-size:12px;padding:6px 10px;text-decoration:none">🎧 Listen</a>
+            <button class="btn btn-ghost" data-copy="${url}" style="font-size:12px;padding:6px 10px">Copy link</button>
+            <button class="btn btn-ghost" data-clear="${t.lsKey}" style="font-size:12px;padding:6px 10px;color:#94a3b8">Remove</button>
+          </div>
+        ` : `
+          <div style="font-size:11.5px;color:#94a3b8;font-style:italic;margin-bottom:8px">No audio uploaded yet.</div>
+          <button class="btn btn-ghost" data-set="${t.lsKey}" style="font-size:12px;padding:6px 10px">+ Paste audio URL</button>
+        `}
+      </div>`;
+  }).join('');
+
+  root.querySelectorAll('[data-copy]').forEach(b => b.onclick = (e) => {
+    const u = e.target.dataset.copy;
+    navigator.clipboard.writeText(u).then(() => alert('URL copied — paste into WhatsApp / email.'))
+                                     .catch(() => prompt('Copy this:', u));
+  });
+  root.querySelectorAll('[data-clear]').forEach(b => b.onclick = (e) => {
+    if (!confirm('Remove this audio URL?')) return;
+    localStorage.removeItem(e.target.dataset.clear);
+    refreshGuidesTab();
+  });
+  root.querySelectorAll('[data-set]').forEach(b => b.onclick = (e) => {
+    const u = prompt('Paste the audio share URL (SoundCloud / Loom / Dropbox / Google Drive):');
+    if (!u) return;
+    localStorage.setItem(e.target.dataset.set, u.trim());
+    refreshGuidesTab();
   });
 }
 
@@ -1696,18 +1722,15 @@ const VIDEO_TUTORIAL_URL = localStorage.getItem('sp-tutorial-video-url')
 const PORTAL_DOCS_BASE   = location.origin === 'null' ? 'https://marc667us.github.io/campaign-portal' : location.origin;
 
 function litEmailBody(e) {
-  const docsBase = PORTAL_DOCS_BASE;
+  const userAudio = localStorage.getItem('sp-audio-user-url');
+  const techAudio = localStorage.getItem('sp-audio-tech-url');
   return `Hello ${e.name},\n\n`
     + `Thanks for the chat earlier. As promised, here is the welcome pack for SolarPro Global — `
     + `the AI solar design platform built for Ghana.\n\n`
     + `1) Try the platform free (no credit card):\n`
     + `   ${SOLARPRO_URL}/register\n\n`
-    + `2) Watch the 5-minute walkthrough:\n`
-    + `   ${VIDEO_TUTORIAL_URL}\n\n`
-    + `3) Read the guides at your own pace:\n`
-    + `   * Sales overview: ${docsBase}/docs/SolarPro_Sales_Pitch.pdf\n`
-    + `   * User guide: ${docsBase}/docs/SolarPro_User_Guide.pdf\n`
-    + `   * Technical guide (BS 7671 / IEC 62548): ${docsBase}/docs/SolarPro_Technical_Guide.pdf\n\n`
+    + (userAudio ? `2) Listen to the 5-minute user walkthrough:\n   ${userAudio}\n\n` : '')
+    + (techAudio ? `3) Technical walkthrough (BS 7671 / IEC 62548):\n   ${techAudio}\n\n` : '')
     + `Beta closes 2026-07-15 and the first 15 Ghana companies get a 50% lifetime discount.\n\n`
     + `Any questions, my line is open.\n\n`
     + `— SolarPro Global, Ghana team`;
