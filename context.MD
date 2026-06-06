@@ -1,6 +1,6 @@
 # aiappinvent Sales Campaign Portal — Session Context
 
-**Last updated:** 2026-06-05
+**Last updated:** 2026-06-05 (end of session — Render backend live; UI overhauled; guides → audio slots)
 **Purpose:** capture state for a future session to resume mid-task without re-discovery.
 
 ---
@@ -100,6 +100,38 @@ Force redeploy: `gh workflow run "Force Render Deploy" -R marc667us/solar-pv-des
 - Tutorial PDF on Desktop (`SolarPro_Portal_Tutorial.pdf`)
 
 ---
+
+## Final state — top-level tabs (after the end-of-session UI overhaul)
+
+| Tab | Visibility | Purpose |
+|---|---|---|
+| Dashboard | all | 7 KPI tiles + funnel/role/cities/status charts + today's priorities |
+| Customers | all | 15 entities, filtered by per-user assignments (admin sees all) |
+| Guides & Tutorials | all | Sales Script PDF (kept) + 2 audio tutorial slots (user / technical walkthroughs) — admin pastes share URLs once via prompt, every rep sees the "Listen" + "Copy link" buttons |
+| Feedback | all | capture bugs / feature requests from customers |
+| Reports | admin only | consolidated feedback report + Claude Code prompt |
+| Staff | admin only | invite generator, pending approvals, current staff CRUD |
+| Data | admin only | entity master in 6 formats |
+| Export | admin only | pipeline state JSON snapshot |
+| Sign out | all | top-right red link |
+
+PDFs in `docs/` (kept on the static site even though only the sales script is now linked from the UI):
+- SolarPro_Sales_Pitch.pdf — visible in Guides tab
+- SolarPro_User_Guide.pdf — no longer linked; replaced by audio slot
+- SolarPro_Technical_Guide.pdf — no longer linked; replaced by audio slot
+- Ghana_Solar_Suppliers/Installers PDFs — internal reference only
+
+## Setting audio tutorial URLs
+
+Admin or any rep opens the portal, F12 → Console → paste:
+```js
+localStorage.setItem('sp-audio-user-url','https://soundcloud.com/...');
+localStorage.setItem('sp-audio-tech-url','https://soundcloud.com/...');
+location.reload();
+```
+OR click the "+ Paste audio URL" button on each empty card. URLs persist in localStorage per browser. The "Send pack" mailto: body auto-includes audio URLs when present.
+
+(Same pattern exists for the video tutorial URL: `localStorage.setItem('sp-tutorial-video-url', '…')`. Currently unused.)
 
 ## 7. Commit history this repo (main)
 
