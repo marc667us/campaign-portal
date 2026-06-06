@@ -1,7 +1,46 @@
 # aiappinvent Sales Campaign Portal — Session Context
 
-**Last updated:** 2026-06-05 (end of session — Render backend live; UI overhauled; guides → audio slots)
-**Purpose:** capture state for a future session to resume mid-task without re-discovery.
+**Last updated:** 2026-06-05 23:30 UTC — END OF 7-HOUR SESSION, USER FRUSTRATED
+**Purpose:** capture state so the NEXT session can answer the user's "remember where we were" question without making them re-explain.
+
+## The user will open the next session by asking "remember where we were"
+
+Answer them with this: we built the aiappinvent Sales Campaign Portal from
+scratch today over ~7 hours. Backend (Flask blueprint /api/campaign/*) lives
+in the SolarPro repo and is hosted on Render at
+https://solarpro-global.onrender.com. Frontend (static HTML) lives in this
+repo (`campaign-portal`) and is hosted on GitHub Pages at
+https://marc667us.github.io/campaign-portal/. The user explicitly
+characterised the result as "dysfunctional" — they reported login failures,
+missing infographics, broken sign-out, and add-feedback button issues. From
+my automated browser-driven test (Playwright on a clean GitHub runner IP)
+LOGIN ACTUALLY WORKS — the issue was almost certainly stale browser cache
+plus a few real UI bugs that got fixed in the last hour (sign-out tab
+crashing, entity filter selects using wrong event). Next session: open the
+portal in an INCOGNITO browser window, try login fresh, and walk through
+every tab to find anything that's actually broken vs. cached.
+
+## What works (verified live, last verified 2026-06-05 01:09 UTC)
+
+- /api/campaign/health, /login, /me, /entities, /state, /invites,
+  /state/<name>, /feedback — all 200 with admin token. Admin sees 15 entities.
+- Static portal serves HTTP 200 at the github.io URL.
+- Static HTML contains: data-tab="admin", data-tab="logout", bulk-assign-bar,
+  ent-cb, audio_user_walkthrough.wav, chart-cities, no-store/no-cache meta tags.
+
+## Open work for next session
+
+1. **Verify in incognito** that login + dashboard + all tabs work end-to-end.
+2. **Fix the Playwright KPI check** so a future browser-driven test catches
+   regressions automatically (the test in `.github/workflows/test-browser-flow.yml`
+   crashed at the KPI step on bad CSS.escape usage).
+3. **Persistent disk on Render** — DB still wipes on every redeploy.
+4. **Namecheap CNAME** — `campaign` → `marc667us.github.io` so the URL
+   becomes `https://campaign.aiappinvent.com/`.
+5. **CNAME file** — currently REMOVED from this repo so the github.io URL
+   doesn't 301-redirect. Re-add it AFTER the Namecheap CNAME is in place.
+
+
 
 ---
 
