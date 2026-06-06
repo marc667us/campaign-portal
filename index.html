@@ -280,10 +280,12 @@
   <div class="tab" data-tab="entities">Customers <span class="count" id="entity-count">0</span></div>
   <div class="tab" data-tab="guides">Guides &amp; Tutorials</div>
   <div class="tab" data-tab="feedback">Feedback <span class="count" id="feedback-count">0</span></div>
-  <div class="tab admin-only" data-tab="staff" style="display:none">Staff</div>
-  <div class="tab admin-only" data-tab="reports" style="display:none">Reports</div>
-  <div class="tab admin-only" data-tab="data" style="display:none">Data</div>
-  <div class="tab admin-only" data-tab="export" style="display:none">Export</div>
+  <div class="tab admin-only" data-tab="admin" style="display:none">⚙ Admin</div>
+  <!-- These 4 panels still exist but tabs are hidden — access via the Admin hub: -->
+  <div class="tab admin-only" data-tab="staff" style="display:none !important"></div>
+  <div class="tab admin-only" data-tab="reports" style="display:none !important"></div>
+  <div class="tab admin-only" data-tab="data" style="display:none !important"></div>
+  <div class="tab admin-only" data-tab="export" style="display:none !important"></div>
   <div class="tab" data-tab="logout" id="logout-tab" style="margin-left:auto;color:#ce1126">Sign out</div>
 </div>
 
@@ -490,6 +492,37 @@
       Admin workflow: download both files → review the Markdown → paste the Claude Code prompt
       into a fresh <code>claude code</code> session in <code>solar-pv-designer-lite/</code>
       to auto-patch the SolarPro app for reported bugs.
+    </div>
+  </div>
+</div>
+
+<!-- ============================ PANEL: ADMIN HUB (admin only) ============================ -->
+<div class="panel" id="panel-admin">
+  <div class="entity-card">
+    <h3 style="margin:0 0 6px">Admin centre</h3>
+    <p style="font-size:13px;color:#475569;margin:0 0 18px">All admin tools in one place. Pick a section.</p>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">
+      <button class="admin-hub-btn" data-go="staff" style="background:#fff;border:2px solid #e2e8f0;border-radius:10px;padding:18px;text-align:left;cursor:pointer;transition:all .15s">
+        <div style="font-size:24px">👥</div>
+        <div style="font-weight:700;color:#0d1f3c;font-size:14px;margin-top:8px">Staff</div>
+        <div style="font-size:12px;color:#64748b;margin-top:3px">Invitations, pending approvals, active staff list, password resets</div>
+      </button>
+      <button class="admin-hub-btn" data-go="reports" style="background:#fff;border:2px solid #e2e8f0;border-radius:10px;padding:18px;text-align:left;cursor:pointer;transition:all .15s">
+        <div style="font-size:24px">📊</div>
+        <div style="font-weight:700;color:#0d1f3c;font-size:14px;margin-top:8px">Reports</div>
+        <div style="font-size:12px;color:#64748b;margin-top:3px">Consolidated feedback report + Claude-Code-ready prompt for auto-patching SolarPro</div>
+      </button>
+      <button class="admin-hub-btn" data-go="data" style="background:#fff;border:2px solid #e2e8f0;border-radius:10px;padding:18px;text-align:left;cursor:pointer;transition:all .15s">
+        <div style="font-size:24px">📁</div>
+        <div style="font-weight:700;color:#0d1f3c;font-size:14px;margin-top:8px">Data</div>
+        <div style="font-size:12px;color:#64748b;margin-top:3px">Entity master in 6 formats: CSV, TSV, vCard, Markdown, JSON, flat JSON</div>
+      </button>
+      <button class="admin-hub-btn" data-go="export" style="background:#fff;border:2px solid #e2e8f0;border-radius:10px;padding:18px;text-align:left;cursor:pointer;transition:all .15s">
+        <div style="font-size:24px">⬇</div>
+        <div style="font-weight:700;color:#0d1f3c;font-size:14px;margin-top:8px">Export pipeline</div>
+        <div style="font-size:12px;color:#64748b;margin-top:3px">Current pipeline state as JSON for the Monday review or as a backup</div>
+      </button>
     </div>
   </div>
 </div>
@@ -1191,8 +1224,30 @@ document.querySelectorAll('.tab').forEach(t => {
     if (t.dataset.tab === 'reports')  refreshReportsTab();
     if (t.dataset.tab === 'staff')    refreshStaffTab();
     if (t.dataset.tab === 'guides')   refreshGuidesTab();
+    if (t.dataset.tab === 'admin')    refreshAdminHub();
   });
 });
+
+/* Admin hub — clicking a card navigates to the existing hidden sub-tab */
+function refreshAdminHub() {
+  document.querySelectorAll('.admin-hub-btn').forEach(b => {
+    b.onmouseover = () => b.style.borderColor = '#ce1126';
+    b.onmouseout  = () => b.style.borderColor = '#e2e8f0';
+    b.onclick = () => {
+      const target = b.dataset.go;
+      const tab = document.querySelector(`.tab[data-tab="${target}"]`);
+      const panel = document.getElementById('panel-' + target);
+      if (!panel) return;
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      panel.classList.add('active');
+      // Run that tab's refresh hook
+      if (target === 'staff')   refreshStaffTab();
+      if (target === 'reports') refreshReportsTab();
+      if (target === 'data')    refreshDataPreview();
+      if (target === 'export')  refreshExport();
+    };
+  });
+}
 
 /* Guides & Tutorials tab — sales script (PDF) + audio tutorial cards (URLs the
    admin sets once via the console, persisted to localStorage).
@@ -1720,8 +1775,8 @@ function renderTable() {
    - Three written guides referenced (download links served from this portal's docs/)
    Edit VIDEO_TUTORIAL_URL once the recording exists; the email body picks it up.
 */
-const VIDEO_TUTORIAL_URL = localStorage.getItem('sp-tutorial-video-url')
-                        || 'https://www.loom.com/share/PASTE_YOUR_LOOM_ID_HERE';
+// Video URL kept as an optional add-on; the welcome-pack email now uses audio URLs by default.
+const VIDEO_TUTORIAL_URL = localStorage.getItem('sp-tutorial-video-url') || '';
 const PORTAL_DOCS_BASE   = location.origin === 'null' ? 'https://marc667us.github.io/campaign-portal' : location.origin;
 
 function litEmailBody(e) {
@@ -1746,8 +1801,10 @@ window.setTutorialVideo = (url) => { localStorage.setItem('sp-tutorial-video-url
 /* ===============================================================
    Toolbar wiring
    =============================================================== */
-['search','filter-role','filter-status'].forEach(id =>
-  document.getElementById(id).addEventListener('input', renderTable));
+// Search uses 'input' (typing); selects fire 'change' (option pick)
+document.getElementById('search').addEventListener('input', renderTable);
+document.getElementById('filter-role').addEventListener('change', renderTable);
+document.getElementById('filter-status').addEventListener('change', renderTable);
 
 document.getElementById('btn-reset').addEventListener('click', () => {
   document.getElementById('search').value = '';
