@@ -354,18 +354,30 @@
         <option value="">All statuses</option>
         <option value="INVITED">Invited</option>
         <option value="CONTACTED">Contacted</option>
-        <option value="DEMO BOOKED">Demo booked</option>
         <option value="SIGNED UP">Signed up</option>
+        <option value="ACTIVE">Active</option>
+        <option value="FEEDBACK">Feedback</option>
+        <option value="NURTURED">Nurtured</option>
         <option value="PAID">Paid</option>
       </select>
       <button class="btn btn-ghost" id="btn-reset">Reset filters</button>
       <span style="flex:1"></span>
-      <button class="btn btn-primary" id="btn-mark-contacted">Bulk: Mark visible as Contacted</button>
+      <button class="btn btn-primary" id="btn-mark-contacted">Mark visible as Contacted</button>
+    </div>
+
+    <!-- Admin-only bulk-assign toolbar -->
+    <div class="toolbar admin-only" id="bulk-assign-bar" style="display:none;background:#fef9c3;border-radius:8px;padding:10px 12px;margin-bottom:12px">
+      <strong style="font-size:12.5px;color:#854d0e">Bulk assign</strong>
+      <span style="font-size:12px;color:#475569">Tick the entities you want to assign, then pick a rep:</span>
+      <select id="assign-to-user" style="min-width:200px"></select>
+      <button class="btn btn-primary" id="btn-assign-selected">Assign selected</button>
+      <span id="selected-count" style="font-size:11.5px;color:#854d0e;font-weight:700">0 selected</span>
     </div>
 
     <table>
       <thead>
         <tr>
+          <th class="admin-only" style="width:30px;display:none"><input type="checkbox" id="select-all-entities" title="Select all visible"></th>
           <th style="width:180px">Entity</th>
           <th style="width:60px">Roles</th>
           <th style="width:130px">City</th>
@@ -1302,11 +1314,59 @@ function refreshGuidesTab() {
 /* Show the Staff tab only when the logged-in user is admin. Called at
    resume/connect time so the tab appears on the same paint as the dashboard. */
 function showStaffTabIfAdmin() {
-  // Staff, Reports, Data, Export are all admin-only — toggle them as a group
-  const adminOnly = document.querySelectorAll('.tab.admin-only');
   const show = (SESSION_USER && SESSION_USER.role === 'admin');
-  adminOnly.forEach(tab => { tab.style.display = show ? '' : 'none'; });
+  // Top-level Admin tab (the others stay hidden in nav but are accessible from the hub)
+  const adminTab = document.querySelector('.tab.admin-only[data-tab="admin"]');
+  if (adminTab) adminTab.style.display = show ? '' : 'none';
+  // Bulk-assign toolbar in Customers table
+  const bar = document.getElementById('bulk-assign-bar');
+  if (bar) bar.style.display = show ? '' : 'none';
+  // Header checkbox column
+  document.querySelectorAll('.admin-only').forEach(el => {
+    if (el.tagName === 'TH') el.style.display = show ? '' : 'none';
+    if (el.tagName === 'TD') el.style.display = show ? '' : 'none';
+  });
+  // Populate the assign-to-user dropdown if admin
+  if (show) populateAssignDropdown();
 }
+
+async function populateAssignDropdown() {
+  const sel = document.getElementById('assign-to-user');
+  if (!sel) return;
+  try {
+    const users = await api('GET', '/users');
+    sel.innerHTML = '<option value="">— pick a rep —</option>' +
+      users.filter(u => u.role !== 'admin').map(u =>
+        `<option value="${u.id}">${u.name} (${u.email})</option>`).join('');
+  } catch (e) { sel.innerHTML = '<option value="">— could not load users —</option>'; }
+}
+
+/* Bulk-assign click handler */
+document.getElementById('btn-assign-selected').addEventListener('click', async () => {
+  const uid = document.getElementById('assign-to-user').value;
+  if (!uid) return alert('Pick a rep first.');
+  const selected = [...document.querySelectorAll('.ent-cb:checked')].map(cb => cb.dataset.name);
+  if (!selected.length) return alert('Tick at least one entity to assign.');
+  if (!confirm(`Assign ${selected.length} entit${selected.length===1?'y':'ies'} to this rep? This REPLACES their current assignments.`)) return;
+  try {
+    await api('POST', '/users/' + uid + '/assignments', { entities: selected });
+    alert('Assignment saved. The rep will see these entities next time they refresh.');
+    document.querySelectorAll('.ent-cb').forEach(cb => cb.checked = false);
+    document.getElementById('selected-count').textContent = '0 selected';
+  } catch (e) { alert('Assign failed: ' + e.message); }
+});
+
+/* Live "N selected" counter + select-all */
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'select-all-entities') {
+    document.querySelectorAll('.ent-cb').forEach(cb => cb.checked = e.target.checked);
+  }
+  if (e.target.classList.contains('ent-cb') || e.target.id === 'select-all-entities') {
+    const n = document.querySelectorAll('.ent-cb:checked').length;
+    const lbl = document.getElementById('selected-count');
+    if (lbl) lbl.textContent = `${n} selected`;
+  }
+});
 
 /* ===============================================================
    Staff tab — admin-only user management
@@ -1712,8 +1772,10 @@ function renderTable() {
     const email  = e.email ? `<a href="mailto:${e.email}">${e.email}</a>` : '—';
     const roleBadges = e.roles.map(r => `<span class="role-${r}">${r[0].toUpperCase()}</span>`).join('');
     const statusOptions = STAGES.map(s => `<option value="${s}" ${s===e.status?'selected':''}>${s}</option>`).join('');
+    const isAdmin = SESSION_USER && SESSION_USER.role === 'admin';
     return `
       <tr>
+        ${isAdmin ? `<td class="admin-only"><input type="checkbox" class="ent-cb" data-name="${e.name.replace(/"/g,'&quot;')}"></td>` : ''}
         <td><strong>${e.name}</strong><div style="color:#94a3b8;font-size:11px;margin-top:3px">${e.services.slice(0, 90)}…</div>
             <div style="margin-top:4px"><a href="${e.website}" target="_blank" style="font-size:11px">site</a></div></td>
         <td class="roles">${roleBadges}</td>
